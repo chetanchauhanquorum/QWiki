@@ -61,4 +61,9 @@ await DataIngestor.IngestDataAsync(
     app.Services,
     new PDFDirectorySource(builder.Configuration, Path.Combine(builder.Environment.WebRootPath, "Data")));
 
+// Ingest PowerPoint files from the same directory
+await DataIngestor.IngestDataAsync(
+    app.Services,
+    new PPTDirectorySource(Path.Combine(builder.Environment.WebRootPath, "Data")));
+
 app.Run();

@@ -67,6 +67,7 @@ public class PDFDirectorySource(IConfiguration configuration, string sourceDirec
             PageNumber = pair.First.PageNumber,
             Text = pair.First.Text,
             Vector = pair.Second.Vector,
+            SourceUrl = $"/Data/{documentId}" // Relative URL to the PDF file
         });
     }
 
