@@ -118,13 +118,39 @@ For testing only - **never commit tokens to source control**:
 
 1. **Configure Tokens** (see above)
 2. **Add Documents**: Place PDF files in the `wwwroot/Data` directory
-3. **Build and Run**:
+3. **Configure Wiki Links** (optional): Update `appsettings.json` or `appsettings.Development.json` to specify which Azure DevOps wiki pages to ingest:
+   ```json
+   {
+     "WikiIngestion": {
+       "WikiLinks": [
+         "Maintenance/For Developers/Process to debug QPEC locally through QPEC Assignment screen on Classic",
+         "Your/Wiki/Page/Path/Here"
+       ]
+     }
+   }
+   ```
+4. **Build and Run**:
    ```bash
    cd QWiki
    dotnet build
    dotnet run
    ```
-4. **Access the Application**: Open your browser to `http://localhost:5100`
+5. **Access the Application**: Open your browser to `http://localhost:5100`
+
+## Wiki Links Configuration
+
+The application now supports ingesting multiple Azure DevOps wiki pages through configuration. You can specify wiki links in your `appsettings.json` or `appsettings.Development.json` file under the `WikiIngestion:WikiLinks` section.
+
+### Wiki Link Format
+Use the relative path of the wiki page as it appears in the Azure DevOps URL:
+- Example URL: `https://dev.azure.com/yourorg/project/_wiki/wikis/wiki-name/123/Page-Title`
+- Configuration value: `"Page-Title"` or `"Folder/Subfolder/Page-Title"`
+
+### Benefits of Multiple Wiki Links
+- **Batch Processing**: All configured wiki pages are processed during ingestion
+- **Error Resilience**: If one wiki link fails, others continue to process
+- **Centralized Configuration**: Easy to manage which wiki content gets ingested
+- **Environment-Specific**: Different wiki links can be configured for development vs production
 
 ## Learn More
 

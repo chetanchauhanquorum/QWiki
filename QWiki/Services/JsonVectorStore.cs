@@ -125,7 +125,14 @@ public class JsonVectorStore(string basePath) : IVectorStore
                 throw new NotSupportedException($"The provided vector type {vector!.GetType().FullName} is not supported.");
             }
 
-            IEnumerable<TRecord> filteredRecords = _records!.Values;
+            // If records is null, return empty results
+            if (_records is null)
+            {
+                return Task.FromResult(new VectorSearchResults<TRecord>(
+                    AsyncEnumerable.Empty<VectorSearchResult<TRecord>>()));
+            }
+
+            IEnumerable<TRecord> filteredRecords = _records.Values;
 
             foreach (var clause in options?.Filter?.FilterClauses ?? [])
             {

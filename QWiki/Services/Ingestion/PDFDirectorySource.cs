@@ -73,7 +73,8 @@ public class PDFDirectorySource(IConfiguration configuration, string sourceDirec
     //QuorumSoftware/Enterprise Platform/Platform Releases/QFC 2024.10/API Security Enhancements/Comprehensive Test Plan
     public async Task<IEnumerable<SemanticSearchRecord>> CreateRecordsForDocumentAsyncForWiki(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator, string wikiLink)
     {
-        string url = $"https://dev.azure.com/quorumsoftware/ecaedfc6-005f-4ee9-aa66-6da8c71a6ad1/_apis/wiki/wikis/7ce3a273-b700-4d7e-9f92-82579271086a/pages/{wikiLink}?api-version=5.0&includeContent=true"; // RecursionLevel=OneLevel";
+        string apiUrl = $"https://dev.azure.com/quorumsoftware/ecaedfc6-005f-4ee9-aa66-6da8c71a6ad1/_apis/wiki/wikis/7ce3a273-b700-4d7e-9f92-82579271086a/pages/{wikiLink}?api-version=5.0&includeContent=true"; // RecursionLevel=OneLevel";
+        string userFriendlyUrl = $"https://dev.azure.com/quorumsoftware/ecaedfc6-005f-4ee9-aa66-6da8c71a6ad1/_wiki/wikis/7ce3a273-b700-4d7e-9f92-82579271086a?pagePath=%2F{Uri.EscapeDataString(wikiLink)}";
 
         string pat = configuration.GetSection("AzureDevOps:Pat").Value!;
         using HttpClient client = new();
@@ -81,7 +82,7 @@ public class PDFDirectorySource(IConfiguration configuration, string sourceDirec
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic",
             Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($":{pat}")));
 
-        HttpResponseMessage response = await client.GetAsync(url);
+        HttpResponseMessage response = await client.GetAsync(apiUrl);
         response.EnsureSuccessStatusCode();
         string responseBody = await response.Content.ReadAsStringAsync();
 
@@ -97,11 +98,33 @@ public class PDFDirectorySource(IConfiguration configuration, string sourceDirec
         {
             Key = $"{wikiLink}_{index}",
             RecordType = "WIKI",
-            FileName = url,
+            FileName = wikiLink.Split('/').LastOrDefault() ?? wikiLink, // Use the last part of the path as display name
+            SourceUrl = userFriendlyUrl,
             PageNumber = 1,
             Text = pair.First,
             Vector = pair.Second.Vector,
         });
+    }
+
+    public async Task<IEnumerable<SemanticSearchRecord>> CreateRecordsForMultipleWikiLinksAsync(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator, IEnumerable<string> wikiLinks)
+    {
+        var allRecords = new List<SemanticSearchRecord>();
+
+        foreach (var wikiLink in wikiLinks)
+        {
+            try
+            {
+                var records = await CreateRecordsForDocumentAsyncForWiki(embeddingGenerator, wikiLink);
+                allRecords.AddRange(records);
+            }
+            catch (Exception ex)
+            {
+                // Log the error but continue processing other wiki links
+                Console.WriteLine($"Error processing wiki link '{wikiLink}': {ex.Message}");
+            }
+        }
+
+        return allRecords;
     }
 
 

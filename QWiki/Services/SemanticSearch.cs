@@ -10,7 +10,7 @@ public class SemanticSearch(
     public async Task<IReadOnlyList<SemanticSearchRecord>> SearchAsync(string text, string? filenameFilter, int maxResults)
     {
         var queryEmbedding = await embeddingGenerator.GenerateEmbeddingVectorAsync(text);
-        var vectorCollection = vectorStore.GetCollection<string, SemanticSearchRecord>("data-githubqchat-ingested");
+        var vectorCollection = vectorStore.GetCollection<string, SemanticSearchRecord>("data-qwiki-ingested");
         var filter = filenameFilter is { Length: > 0 }
             ? new VectorSearchFilter().EqualTo(nameof(SemanticSearchRecord.FileName), filenameFilter)
             : null;

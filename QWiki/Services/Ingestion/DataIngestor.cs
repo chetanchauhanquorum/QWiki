@@ -8,7 +8,8 @@ public class DataIngestor(
     ILogger<DataIngestor> logger,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     IVectorStore vectorStore,
-    IngestionCacheDbContext ingestionCacheDb)
+    IngestionCacheDbContext ingestionCacheDb,
+    IConfiguration configuration)
 {
     public static async Task IngestDataAsync(IServiceProvider services, IIngestionSource source)
     {
@@ -59,9 +60,18 @@ public class DataIngestor(
 
         await ingestionCacheDb.SaveChangesAsync();
 
-        // TODO: Configure Azure DevOps PAT token if you want to ingest wiki content
-        var newWikiRecords = await source.CreateRecordsForDocumentAsyncForWiki(embeddingGenerator, "Maintenance/For Developers/Process to debug QPEC locally through QPEC Assignment screen on Classic");
-        await foreach (var id in vectorCollection.UpsertBatchAsync(newWikiRecords)) { }
+        // Process wiki links from configuration
+        var wikiLinks = configuration.GetSection("WikiIngestion:WikiLinks").Get<string[]>();
+        if (wikiLinks != null && wikiLinks.Length > 0)
+        {
+            logger.LogInformation("Processing {count} wiki links from configuration", wikiLinks.Length);
+            var newWikiRecords = await source.CreateRecordsForMultipleWikiLinksAsync(embeddingGenerator, wikiLinks);
+            await foreach (var id in vectorCollection.UpsertBatchAsync(newWikiRecords)) { }
+        }
+        else
+        {
+            logger.LogWarning("No wiki links found in configuration under WikiIngestion:WikiLinks");
+        }
 
         logger.LogInformation("Ingestion is up-to-date");
     }
