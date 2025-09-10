@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>PowerPoint Viewer</title>
+    <style>
+        body {
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .file-name {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .slide-info {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        .slide-content {
+            padding: 30px;
+        }
+        .slide-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+        .content-block {
+            background-color: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px 20px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .content-text {
+            line-height: 1.6;
+            color: #555;
+            font-size: 16px;
+        }
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+        }
+        .nav-button {
+            padding: 10px 20px;
+            background-color: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+        }
+        .nav-button:hover {
+            background-color: #5a67d8;
+        }
+        .nav-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .slide-counter {
+            font-weight: 600;
+            color: #666;
+        }
+        .actions {
+            text-align: center;
+            padding: 20px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 0 10px;
+            font-weight: 500;
+        }
+        .btn:hover {
+            background-color: #218838;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="file-name" id="fileName">Loading...</div>
+            <div class="slide-info" id="slideInfo">Please wait...</div>
+        </div>
+
+        <div id="loadingDiv" class="loading">
+            🔄 Loading slide content...
+        </div>
+
+        <div id="errorDiv" class="error" style="display: none;">
+            ❌ Error loading slide content. Please try again.
+        </div>
+
+        <div id="slideContentDiv" style="display: none;">
+            <div class="highlight">
+                <strong>📍 Referenced Content:</strong> This is the slide that contains the information mentioned in your search results.
+            </div>
+            
+            <div class="slide-content">
+                <div class="slide-title" id="slideTitle">Slide Title</div>
+                <div id="slideContent"></div>
+            </div>
+
+            <div class="navigation">
+                <button class="nav-button" id="prevBtn" onclick="navigateSlide(-1)">← Previous</button>
+                <div class="slide-counter" id="slideCounter">Slide 1 of 1</div>
+                <button class="nav-button" id="nextBtn" onclick="navigateSlide(1)">Next →</button>
+            </div>
+        </div>
+
+        <div class="actions">
+            <a href="#" id="downloadBtn" class="btn" download style="display: none;">
+                📥 Download Full Presentation
+            </a>
+            <a href="#" onclick="window.close()" class="btn btn-secondary">
+                ← Back to Chat
+            </a>
+        </div>
+    </div>
+
+    <script>
+        let currentSlide = 1;
+        let totalSlides = 1;
+        let fileName = '';
+
+        // Parse URL parameters
+        function getUrlParameter(name) {
+            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+            var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+            var results = regex.exec(location.search);
+            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        }
+
+        // Load slide content from API
+        async function loadSlide(slideNumber) {
+            try {
+                document.getElementById('loadingDiv').style.display = 'block';
+                document.getElementById('errorDiv').style.display = 'none';
+                document.getElementById('slideContentDiv').style.display = 'none';
+
+                const response = await fetch(`/api/PowerPoint/slide?file=${encodeURIComponent(fileName)}&slide=${slideNumber}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const slideData = await response.json();
+                
+                // Update UI with slide data
+                document.getElementById('slideTitle').textContent = slideData.title;
+                document.getElementById('slideCounter').textContent = `Slide ${slideData.slideNumber} of ${slideData.totalSlides}`;
+                
+                // Display slide content
+                const contentDiv = document.getElementById('slideContent');
+                contentDiv.innerHTML = '';
+                
+                slideData.content.forEach(content => {
+                    const contentBlock = document.createElement('div');
+                    contentBlock.className = 'content-block';
+                    contentBlock.innerHTML = `<div class="content-text">${escapeHtml(content)}</div>`;
+                    contentDiv.appendChild(contentBlock);
+                });
+
+                // Update navigation
+                totalSlides = slideData.totalSlides;
+                currentSlide = slideData.slideNumber;
+                updateNavigation();
+
+                document.getElementById('loadingDiv').style.display = 'none';
+                document.getElementById('slideContentDiv').style.display = 'block';
+
+            } catch (error) {
+                console.error('Error loading slide:', error);
+                document.getElementById('loadingDiv').style.display = 'none';
+                document.getElementById('errorDiv').style.display = 'block';
+            }
+        }
+
+        // Navigate to different slide
+        function navigateSlide(direction) {
+            const newSlide = currentSlide + direction;
+            if (newSlide >= 1 && newSlide <= totalSlides) {
+                loadSlide(newSlide);
+            }
+        }
+
+        // Update navigation buttons
+        function updateNavigation() {
+            document.getElementById('prevBtn').disabled = currentSlide <= 1;
+            document.getElementById('nextBtn').disabled = currentSlide >= totalSlides;
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize the viewer
+        document.addEventListener('DOMContentLoaded', function() {
+            fileName = getUrlParameter('file');
+            const slideNumber = parseInt(getUrlParameter('slide')) || 1;
+            
+            if (fileName) {
+                // Update UI
+                document.getElementById('fileName').textContent = fileName.split('/').pop();
+                document.getElementById('slideInfo').textContent = `Loading slide ${slideNumber}...`;
+                
+                // Set download link
+                const downloadBtn = document.getElementById('downloadBtn');
+                downloadBtn.href = fileName;
+                downloadBtn.download = fileName.split('/').pop();
+                downloadBtn.style.display = 'inline-block';
+                
+                // Load the slide content
+                loadSlide(slideNumber);
+            } else {
+                document.getElementById('errorDiv').style.display = 'block';
+                document.getElementById('loadingDiv').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

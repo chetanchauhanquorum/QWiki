@@ -31,16 +31,21 @@
     {
         viewerUrl = null;
 
-        // If SourceUrl is provided (for wiki pages), use it directly
-        if (!string.IsNullOrEmpty(SourceUrl))
-        {
-            viewerUrl = SourceUrl;
-        }
-        // If you ingest other types of content besides PDF files, construct a URL to an appropriate viewer here
-        else if (File.EndsWith(".pdf"))
+        // Check file type first to determine the appropriate viewer
+        if (File.EndsWith(".pdf"))
         {
             var search = Quote?.Trim('.', ',', ' ', '\n', '\r', '\t', '"', '\'');
             viewerUrl = $"lib/pdf_viewer/viewer.html?file=/Data/{HttpUtility.UrlEncode(File)}#page={PageNumber}&search={HttpUtility.UrlEncode(search)}&phrase=true";
+        }
+        else if (File.EndsWith(".pptx") || File.EndsWith(".pptm"))
+        {
+            // Use a custom PowerPoint viewer that can navigate to specific slides
+            viewerUrl = $"lib/ppt_viewer/viewer.html?file=/Data/{HttpUtility.UrlEncode(File)}&slide={PageNumber}";
+        }
+        // If SourceUrl is provided (for wiki pages) and no specific viewer is set, use it directly
+        else if (!string.IsNullOrEmpty(SourceUrl))
+        {
+            viewerUrl = SourceUrl;
         }
     }
 }
