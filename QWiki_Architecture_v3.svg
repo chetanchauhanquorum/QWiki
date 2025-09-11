@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200" viewBox="0 0 1600 1200">
+  <defs>
+    <style>
+      .font { font-family: 'Segoe UI', 'Arial', sans-serif; }
+      .title { font-size: 32px; font-weight: bold; }
+      .subtitle { font-size: 20px; font-weight: bold; }
+      .label { font-size: 16px; }
+      .small-label { font-size: 14px; }
+      .arrow-label { font-size: 14px; fill: #444; }
+      
+      .bg { fill: #ffffff; }
+      .boundary-bg { fill: #f8f9fa; }
+      .component-bg { fill: #ffffff; stroke: #b0b0b0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .user-bg { fill: #eaf4ff; stroke: #99c9ff; }
+      .data-source-bg { fill: #fff8e1; stroke: #ffe082; }
+      .storage-bg { fill: #e8f5e9; stroke: #a5d6a7; }
+      .api-bg { fill: #f3e5f5; stroke: #ce93d8; }
+      .pipeline-bg { fill: #fff3f3; stroke: #ffcdd2; }
+
+      .arrow-line { stroke: #333; stroke-width: 2.5; fill: none; }
+      .dashed-arrow-line { stroke: #555; stroke-width: 2; stroke-dasharray: 7,7; fill: none; }
+      .arrow-head { fill: #333; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-head" />
+    </marker>
+    <marker id="dashed-arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-head" fill="#555" />
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="1200" class="bg" />
+
+  <text x="800" y="60" text-anchor="middle" class="font title">QWiki - RAG AI Chatbot Architecture</text>
+
+  <!-- Boundaries -->
+  <rect x="25" y="100" width="1550" height="1050" class="boundary-bg" stroke="#e0e0e0" stroke-width="1" rx="15" ry="15"/>
+  <text x="60" y="140" class="font subtitle" fill="#999">QWiki System</text>
+
+  <!-- User -->
+  <rect x="80" y="550" width="150" height="80" class="component-bg user-bg" />
+  <text x="155" y="590" text-anchor="middle" class="font label">User</text>
+
+  <!-- Frontend -->
+  <rect x="300" y="525" width="220" height="130" class="component-bg" />
+  <text x="410" y="560" text-anchor="middle" class="font subtitle">Frontend</text>
+  <text x="410" y="595" text-anchor="middle" class="font label">ASP.NET Core Web App</text>
+  <text x="410" y="620" text-anchor="middle" class="font label">JavaScript UI</text>
+
+  <!-- RAG Pipeline (Main Box) -->
+  <rect x="580" y="180" width="740" height="600" rx="10" ry="10" class="component-bg pipeline-bg"/>
+  <text x="950" y="220" text-anchor="middle" class="font subtitle">RAG Pipeline</text>
+
+  <!-- RAG Pipeline Components -->
+  <g id="rag-pipeline-components">
+    <rect x="610" y="490" width="180" height="100" class="component-bg" />
+    <text x="700" y="530" text-anchor="middle" class="font label">Document</text>
+    <text x="700" y="555" text-anchor="middle" class="font label">Chunking</text>
+
+    <rect x="610" y="620" width="180" height="100" class="component-bg" />
+    <text x="700" y="660" text-anchor="middle" class="font label">Embedding</text>
+    <text x="700" y="685" text-anchor="middle" class="font label">Generation</text>
+
+    <rect x="850" y="260" width="200" height="130" class="component-bg" />
+    <text x="950" y="295" text-anchor="middle" class="font label">Semantic Search</text>
+    <text x="950" y="320" text-anchor="middle" class="font label">&amp; Retrieval</text>
+    <text x="950" y="360" text-anchor="middle" class="font small-label">(Vector Similarity Search)</text>
+
+    <rect x="1100" y="490" width="180" height="100" class="component-bg" />
+    <text x="1190" y="530" text-anchor="middle" class="font label">Response</text>
+    <text x="1190" y="555" text-anchor="middle" class="font label">Generation</text>
+  </g>
+
+  <!-- Vector DB -->
+  <rect x="850" y="590" width="200" height="150" class="component-bg storage-bg" />
+  <text x="950" y="625" text-anchor="middle" class="font subtitle">Vector Database</text>
+  <text x="950" y="655" text-anchor="middle" class="font label">Embeddings Store</text>
+  <path d="M890 675 C 890 665, 1010 665, 1010 675 L 1010 705 C 1010 715, 890 715, 890 705 Z" fill="none" stroke="#a5d6a7" stroke-width="2"/>
+  <rect x="890" y="675" width="120" height="12" fill="none" stroke="#a5d6a7" stroke-width="2"/>
+  <rect x="890" y="693" width="120" height="12" fill="none" stroke="#a5d6a7" stroke-width="2"/>
+
+  <!-- AI Model -->
+  <rect x="1050" y="260" width="200" height="110" class="component-bg api-bg" />
+  <text x="1150" y="305" text-anchor="middle" class="font subtitle">GitHub</text>
+  <text x="1150" y="335" text-anchor="middle" class="font subtitle">Models API</text>
+
+  <!-- Document Ingestion Layer -->
+  <rect x="580" y="820" width="740" height="120" rx="10" ry="10" class="component-bg"/>
+  <text x="950" y="855" text-anchor="middle" class="font subtitle">Document Ingestion Layer</text>
+  <text x="950" y="890" text-anchor="middle" class="font label">Preprocessing, Normalization &amp; Update Detection</text>
+
+  <!-- Data Sources -->
+  <rect x="80" y="820" width="440" height="190" rx="10" ry="10" class="component-bg data-source-bg"/>
+  <text x="300" y="855" text-anchor="middle" class="font subtitle">Data Sources</text>
+  <text x="190" y="900" text-anchor="middle" class="font label">Azure DevOps Wiki</text>
+  <text x="190" y="950" text-anchor="middle" class="font label">Right Answers Articles</text>
+  <text x="390" y="900" text-anchor="middle" class="font label">PDF, PPT, Transcripts</text>
+  <text x="390" y="925" text-anchor="middle" class="font small-label">(in wwwroot/Data)</text>
+  <text x="390" y="965" text-anchor="middle" class="font small-label" fill="#888">Future: Office Docs, etc.</text>
+  
+  <!-- Azure DevOps API -->
+  <rect x="170" y="680" width="200" height="110" class="component-bg api-bg" />
+  <text x="270" y="725" text-anchor="middle" class="font subtitle">Azure DevOps</text>
+  <text x="270" y="755" text-anchor="middle" class="font subtitle">API</text>
+
+  <!-- Config Management -->
+  <rect x="1350" y="820" width="200" height="180" class="component-bg" />
+  <text x="1450" y="855" text-anchor="middle" class="font subtitle">Configuration</text>
+  <text x="1450" y="880" text-anchor="middle" class="font subtitle">Management</text>
+  <text x="1450" y="925" text-anchor="middle" class="font label">User Secrets</text>
+  <text x="1450" y="950" text-anchor="middle" class="font label">appsettings.json</text>
+  <text x="1450" y="980" text-anchor="middle" class="font small-label">(API Tokens, etc.)</text>
+
+  <!-- ARROWS -->
+  <!-- User Interaction Flow -->
+  <path d="M 230 590 H 300" class="arrow-line" marker-end="url(#arrow)" />
+  <text x="265" y="580" text-anchor="middle" class="font arrow-label">1. User Query</text>
+  <path d="M 520 590 H 850 V 390" class="arrow-line" marker-end="url(#arrow)" />
+  <text x="685" y="580" text-anchor="middle" class="font arrow-label">2. Vectorize &amp; Search Query</text>
+  <path d="M 1100 540 H 520" class="arrow-line" marker-end="url(#arrow)" />
+  <text x="810" y="530" text-anchor="middle" class="font arrow-label">8. Response + Citations</text>
+
+  <!-- Document Ingestion Flow -->
+  <path d="M 520 880 H 580" class="arrow-line" marker-end="url(#arrow)" />
+  <text x="550" y="870" text-anchor="middle" class="font arrow-label">Docs</text>
+  <path d="M 270 790 V 820" class="arrow-line" marker-end="url(#arrow)" />
+  <text x="275" y="805" text-anchor="start" class="font arrow-label">Wiki Content</text>
+  <path d="M 700 820 V 720" class="arrow-line" marker-end="url(#arrow)" />
+  <text x="705" y="770" text-anchor="start" class="font arrow-label">Processed Docs</text>
+  <path d="M 700 590 V 620" class="arrow-line" marker-end="url(#arrow)" />
+
+  <!-- RAG Pipeline Internal Flow -->
+  <path d="M 790 670 H 850" class="arrow-line" marker-end="url(#arrow)" />
+  <text x="820" y="660" text-anchor="middle" class="font arrow-label">Store</text>
+  <path d="M 850 670 H 790" class="arrow-line" />
+  <text x="820" y="700" text-anchor="middle" class="font arrow-label">Embeddings</text>
+  <path d="M 950 390 V 590" class="arrow-line" marker-end="url(#arrow)" />
+  <text x="955" y="480" text-anchor="start" class="font arrow-label">4. Similarity Search</text>
+  
+  <path d="M 950 390 H 1190 V 490" class="arrow-line" />
+  <text x="1070" y="420" text-anchor="middle" class="font arrow-label">5. Retrieved Context</text>
+  
+  <path d="M 1190 490 V 370" class="dashed-arrow-line" marker-end="url(#dashed-arrow)" />
+  <text x="1200" y="430" text-anchor="start" class="font arrow-label">6a. Prompt to LLM</text>
+  <path d="M 1150 370 V 490 H 1190" class="dashed-arrow-line" marker-end="url(#dashed-arrow)" />
+  <text x="1090" y="430" text-anchor="end" class="font arrow-label">6b. Generated Response</text>
+  
+  <path d="M 950 390 V 540 H 1100" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="930" y="460" text-anchor="end" class="font arrow-label">7. Source References</text>
+
+  <!-- Config Management Connections -->
+  <path d="M 1350 860 H 1320 V 315 H 1250" class="dashed-arrow-line" marker-end="url(#dashed-arrow)" />
+  <text x="1285" y="340" text-anchor="middle" class="font arrow-label">API Key</text>
+  <path d="M 1350 910 H 1320 V 880 H 1320" class="dashed-arrow-line" marker-end="url(#dashed-arrow)" />
+  <text x="1330" y="870" text-anchor="end" class="font arrow-label">Config</text>
+
+  <!-- Visual Indicators -->
+  <g id="indicators">
+    <path d="M 230 590 L 250 580 L 250 600 Z" fill="#ffab73" />
+    <path d="M 690 720 L 710 720 L 700 700 Z" fill="#a6d8d8" />
+    <circle cx="950" cy="485" r="8" fill="none" stroke="#ffcdd2" stroke-width="3"/>
+    <circle cx="950" cy="485" r="4" fill="#f06292"/>
+    <path d="M1140 370 l 10 -10 l 10 10 l -10 10 z" fill="#ce93d8" />
+    <rect x="945" y="455" width="10" height="10" fill="#333" transform="rotate(45 950 460)"/>
+  </g>
+</svg>

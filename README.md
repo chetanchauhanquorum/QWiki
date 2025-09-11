@@ -11,6 +11,28 @@ QWiki builds upon the concept of creating an intelligent documentation assistant
 - **Support Multiple Document Types**: Process PDFs, Word documents, PowerPoint presentations, and wiki content
 - **Enable Knowledge Discovery**: Allow users to explore documentation through natural language queries
 
+## Architecture Overview
+
+![QWiki Architecture](QWiki_Architecture_v3.svg)
+
+QWiki follows a modern **Retrieval Augmented Generation (RAG)** architecture that combines intelligent document retrieval with AI-powered response generation:
+
+### Core Components:
+- **Frontend**: ASP.NET Core web application with JavaScript UI for user interactions
+- **Document Ingestion Layer**: Processes multiple document types (Azure DevOps wikis, PDFs, PPTs, transcripts) and converts them into searchable vector embeddings
+- **Vector Database**: Stores document embeddings for fast semantic similarity search
+- **RAG Pipeline**: Orchestrates the flow from user query → document retrieval → AI response generation
+- **GitHub Models API**: Provides AI capabilities for embedding generation and response creation
+
+### Data Flow:
+1. **User Query**: Natural language questions entered through the web interface
+2. **Vectorize & Search**: Query is converted to embeddings and searched against the vector database
+3. **Context Retrieval**: Most relevant document chunks are retrieved based on semantic similarity
+4. **Response Generation**: GitHub Models API generates responses using the retrieved context
+5. **Source Citations**: Responses include references to original documents for verification
+
+This architecture ensures accurate, contextual responses while maintaining transparency through source tracking and enables easy extension to support additional document types and data sources.
+
 ## Key Features
 
 - **RAG Architecture**: Uses Retrieval Augmented Generation to combine document search with AI-generated responses
@@ -125,6 +147,57 @@ For testing only - **never commit tokens to source control**:
    dotnet run
    ```
 4. **Access the Application**: Open your browser to `http://localhost:5100`
+
+## Glossary
+
+### **RAG (Retrieval Augmented Generation)**
+A machine learning approach that combines information retrieval with text generation. Instead of relying solely on the AI model's training data, RAG first retrieves relevant documents from a knowledge base, then uses that context to generate more accurate and factual responses. This reduces hallucinations and provides verifiable information sources.
+
+### **Semantic Search**
+A search technique that understands the meaning and context of queries rather than just matching keywords. Unlike traditional keyword-based search, semantic search can find relevant documents even when they don't contain the exact words from the query. For example, searching for "database performance" could return documents about "SQL optimization" or "query tuning."
+
+### **Embeddings**
+Mathematical representations of text, documents, or other data as vectors (arrays of numbers) in high-dimensional space. Words or documents with similar meanings are positioned close to each other in this vector space. Embeddings capture semantic relationships - for instance, "king" and "queen" would have similar embeddings because they're both royal titles.
+
+### **Vector Database**
+A specialized database designed to store, index, and search vector embeddings efficiently. Vector databases use algorithms like cosine similarity or Euclidean distance to find the most similar vectors to a given query vector. This enables fast semantic search across large document collections.
+
+### **Document Chunking**
+The process of breaking down large documents into smaller, manageable pieces (chunks) before converting them to embeddings. This is necessary because:
+- AI models have token limits for input size
+- Smaller chunks provide more precise retrieval results
+- Better granularity for source citations and references
+
+### **Vector Similarity Search**
+The process of finding the most similar vectors in a vector database to a query vector. Common similarity measures include:
+- **Cosine Similarity**: Measures the angle between vectors (most common for text)
+- **Euclidean Distance**: Measures straight-line distance between vectors
+- **Dot Product**: Measures vector alignment and magnitude
+
+### **Document Ingestion**
+The automated process of:
+1. Discovering and reading documents from various sources
+2. Extracting text content and metadata
+3. Preprocessing and normalizing the content
+4. Converting text into vector embeddings
+5. Storing embeddings in the vector database for search
+
+### **Source Citations**
+References to the original documents where information was found, including:
+- Document name and type
+- Page numbers or section references
+- Confidence scores for retrieval accuracy
+- Direct links to source materials when available
+
+### **Context Window**
+The maximum amount of text (measured in tokens) that an AI model can process at once. In RAG systems, this limits how much retrieved context can be included with the user's query when generating responses. Effective chunking and retrieval strategies help maximize the use of available context space.
+
+### **Personal Access Token (PAT)**
+A security token used for authenticating with APIs without using passwords. PATs provide:
+- Fine-grained permissions control
+- Easier credential management
+- Ability to revoke access without changing passwords
+- Audit trails for API usage
 
 ## Learn More
 
