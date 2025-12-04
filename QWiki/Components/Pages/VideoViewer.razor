@@ -1,0 +1,135 @@
+@page "/video-viewer"
+@using System.Web
+
+<div class="video-viewer-container">
+    @if (!string.IsNullOrEmpty(VideoPath))
+    {
+        <div class="video-section">
+            <h2>SharePoint Video</h2>
+            <video controls width="800" class="video-player">
+                <source src="@VideoPath" type="video/mp4" />
+                @if (!string.IsNullOrEmpty(TranscriptPath))
+                {
+                    <track src="@TranscriptPath" kind="subtitles" srclang="en" label="English" default />
+                }
+                Your browser does not support the video tag.
+            </video>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(TranscriptText))
+        {
+            <div class="transcript-section">
+                <h3>Transcript</h3>
+                <div class="transcript-content">
+                    @((MarkupString)TranscriptText.Replace("\n", "<br/>"))
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <p>Video not found.</p>
+    }
+</div>
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery]
+    public string? Video { get; set; }
+
+    private string? VideoPath { get; set; }
+    private string? TranscriptPath { get; set; }
+    private string? TranscriptText { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(Video))
+        {
+            VideoPath = $"Data/{HttpUtility.UrlDecode(Video)}";
+            
+            // Try to find the corresponding transcript file
+            var videoFolder = Path.GetDirectoryName(Video);
+            var videoNameWithoutExt = Path.GetFileNameWithoutExtension(Video);
+            var transcriptFileName = $"{videoNameWithoutExt}-en-US.vtt";
+            
+            if (!string.IsNullOrEmpty(videoFolder))
+            {
+                TranscriptPath = $"Data/{videoFolder}/{transcriptFileName}";
+                
+                // Read transcript content for display
+                var transcriptFilePath = Path.Combine("wwwroot", TranscriptPath);
+                if (File.Exists(transcriptFilePath))
+                {
+                    TranscriptText = await ExtractTranscriptTextAsync(transcriptFilePath);
+                }
+            }
+        }
+    }
+
+    private static async Task<string> ExtractTranscriptTextAsync(string vttFilePath)
+    {
+        var lines = await File.ReadAllLinesAsync(vttFilePath);
+        var transcriptText = new List<string>();
+        
+        // Skip WEBVTT header and process caption blocks
+        var regex = new System.Text.RegularExpressions.Regex(@"^\d+:\d+:\d+\.\d+ --> \d+:\d+:\d+\.\d+$");
+        
+        foreach (var line in lines)
+        {
+            var trimmedLine = line.Trim();
+            
+            // Skip empty lines, WEBVTT header, timestamps, and cue identifiers
+            if (string.IsNullOrEmpty(trimmedLine) || 
+                trimmedLine == "WEBVTT" ||
+                regex.IsMatch(trimmedLine) ||
+                (Guid.TryParse(trimmedLine, out _) || 
+                 (trimmedLine.Contains("-") && trimmedLine.Length > 20)))
+            {
+                continue;
+            }
+            
+            // Collect actual caption text
+            transcriptText.Add(trimmedLine);
+        }
+        
+        return string.Join(" ", transcriptText);
+    }
+}
+
+<style>
+    .video-viewer-container {
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .video-section {
+        margin-bottom: 30px;
+    }
+
+    .video-player {
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .transcript-section {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+    }
+
+    .transcript-content {
+        background-color: white;
+        padding: 15px;
+        border-radius: 6px;
+        border: 1px solid #e9ecef;
+        line-height: 1.6;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    h2, h3 {
+        color: #333;
+        margin-bottom: 15px;
+    }
+</style>
