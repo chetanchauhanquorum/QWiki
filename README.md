@@ -148,6 +148,30 @@ For testing only - **never commit tokens to source control**:
    ```
 4. **Access the Application**: Open your browser to `http://localhost:5100`
 
+## Deployment
+
+### Azure Deployment
+
+For detailed instructions on deploying QWiki to Azure, see [AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md).
+
+**Quick Azure Deployment:**
+```powershell
+.\deploy-to-azure.ps1 -ResourceGroupName "qwiki-rg" -WebAppName "qwiki-app" -GitHubToken "your-github-token"
+```
+
+**Deployment Options:**
+- **Azure App Service**: Recommended for production (see deployment guide)
+- **Docker Container**: Use the included Dockerfile for containerized deployment
+- **GitHub Actions**: Automated CI/CD pipeline included
+
+### Container Deployment
+
+Build and run with Docker:
+```bash
+docker build -t qwiki .
+docker run -p 8080:8080 -e GitHubModels__Token="your-token" qwiki
+```
+
 ## Glossary
 
 ### **RAG (Retrieval Augmented Generation)**
@@ -204,3 +228,4 @@ A security token used for authenticating with APIs without using passwords. PATs
 - [GitHub Models Documentation](https://docs.github.com/github-models/prototyping-with-ai-models)
 - [Azure DevOps Personal Access Tokens](https://docs.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate)
 - [.NET User Secrets](https://docs.microsoft.com/en-us/aspnet/core/security/app-secrets)
+- [Azure App Service Documentation](https://docs.microsoft.com/en-us/azure/app-service/)
