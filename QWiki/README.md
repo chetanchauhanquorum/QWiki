@@ -135,7 +135,7 @@ For testing only - **never commit tokens to source control**:
    dotnet build
    dotnet run
    ```
-5. **Access the Application**: Open your browser to `http://localhost:5100`
+5. **Access the Application**: Open your browser to `http://localhost:5123` or `https://localhost:7201`
 
 ## Wiki Links Configuration
 

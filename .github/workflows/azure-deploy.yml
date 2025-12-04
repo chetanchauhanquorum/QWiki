@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: 'qwiki-app'    # Set this to your app service name
+  AZURE_WEBAPP_NAME: 'qwiki-app-ayg2hrayceegf6bf'    # Your actual Azure Web App name
   AZURE_WEBAPP_PACKAGE_PATH: './QWiki'
   DOTNET_VERSION: '9.0.x'
 

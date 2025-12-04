@@ -44,9 +44,9 @@
             "sku": {
                 "name": "[parameters('sku')]"
             },
-            "kind": "linux",
+            "kind": "app",
             "properties": {
-                "reserved": true
+                "reserved": false
             }
         },
         {
@@ -57,11 +57,17 @@
             "dependsOn": [
                 "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
             ],
-            "kind": "app,linux",
+            "kind": "app",
             "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
                 "siteConfig": {
-                    "linuxFxVersion": "DOTNETCORE|9.0",
+                    "netFrameworkVersion": "v9.0",
+                    "metadata": [
+                        {
+                            "name": "CURRENT_STACK",
+                            "value": "dotnet"
+                        }
+                    ],
                     "appSettings": [
                         {
                             "name": "GitHubModels__Token",
