@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.SemanticKernel.Text;
 using System.Text.RegularExpressions;
@@ -6,42 +7,55 @@ namespace QWiki.Services.Ingestion;
 
 public class SharePointTranscriptSource(string sourceDirectory) : IIngestionSource
 {
-    public static string SourceFileId(string path) => Path.GetFileName(path);
+    public string SourceId => $"{nameof(SharePointTranscriptSource)}:{sourceDirectory}";
+
+    public static string SourceFileId(string path, string sourceDir)
+    {
+        // Use relative path from sourceDirectory to ensure uniqueness across subdirectories
+        var relativePath = Path.GetRelativePath(sourceDir, path);
+        return Path.GetFileNameWithoutExtension(relativePath).Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
+    }
+    
     public static string SourceFileVersion(string path) => File.GetLastWriteTimeUtc(path).ToString("o");
 
-    public Task<IEnumerable<IngestedDocument>> GetDeletedDocumentsAsync(IQueryable<IngestedDocument> existingDocuments)
+    public async Task<IEnumerable<IngestedDocument>> GetDeletedDocumentsAsync(IQueryable<IngestedDocument> existingDocuments)
     {
         var currentFiles = Directory.GetFiles(sourceDirectory, "*.vtt", SearchOption.AllDirectories);
-        var currentFileIds = new HashSet<string>(currentFiles.Select(SourceFileId));
-        var existingDocsList = existingDocuments.ToList();
-        var deletedDocuments = existingDocsList.Where(d => !currentFileIds.Contains(d.Id));
-        return Task.FromResult(deletedDocuments);
+        var currentFileIds = currentFiles.Select(f => SourceFileId(f, sourceDirectory)).ToList();
+        return await existingDocuments
+            .Where(d => d.SourceId == SourceId && !currentFileIds.Contains(d.Id))
+            .ToListAsync();
     }
 
-    public Task<IEnumerable<IngestedDocument>> GetNewOrModifiedDocumentsAsync(IQueryable<IngestedDocument> existingDocuments)
+    public async Task<IEnumerable<IngestedDocument>> GetNewOrModifiedDocumentsAsync(IQueryable<IngestedDocument> existingDocuments)
     {
         var results = new List<IngestedDocument>();
         var sourceFiles = Directory.GetFiles(sourceDirectory, "*.vtt", SearchOption.AllDirectories);
-        var existingDocumentsById = existingDocuments.ToDictionary(d => d.Id);
 
         foreach (var sourceFile in sourceFiles)
         {
-            var sourceFileId = SourceFileId(sourceFile);
+            var sourceFileId = SourceFileId(sourceFile, sourceDirectory);
             var sourceFileVersion = SourceFileVersion(sourceFile);
-            var existingDocumentVersion = existingDocumentsById.TryGetValue(sourceFileId, out var existingDocument) ? existingDocument.Version : null;
-            if (existingDocumentVersion != sourceFileVersion)
+
+            var existingDocument = await existingDocuments.Where(d => d.SourceId == SourceId && d.Id == sourceFileId).FirstOrDefaultAsync();
+            if (existingDocument is null)
             {
                 results.Add(new() { Id = sourceFileId, Version = sourceFileVersion, SourceId = SourceId });
             }
+            else if (existingDocument.Version != sourceFileVersion)
+            {
+                existingDocument.Version = sourceFileVersion;
+                results.Add(existingDocument);
+            }
         }
 
-        return Task.FromResult((IEnumerable<IngestedDocument>)results);
+        return results;
     }
 
     public async Task<IEnumerable<SemanticSearchRecord>> CreateRecordsForDocumentAsync(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator, string documentId)
     {
         var sourceFiles = Directory.GetFiles(sourceDirectory, "*.vtt", SearchOption.AllDirectories);
-        var sourceFile = sourceFiles.FirstOrDefault(f => SourceFileId(f) == documentId);
+        var sourceFile = sourceFiles.FirstOrDefault(f => SourceFileId(f, sourceDirectory) == documentId);
         if (sourceFile == null)
         {
             return [];
@@ -50,28 +64,20 @@ public class SharePointTranscriptSource(string sourceDirectory) : IIngestionSour
         var transcriptText = await ExtractTranscriptTextAsync(sourceFile);
         
 #pragma warning disable SKEXP0050 // Type is for evaluation purposes only
-        var chunks = TextChunker.SplitPlainTextParagraphs([transcriptText], 200);
+        var chunks = TextChunker.SplitPlainTextParagraphs([transcriptText], 200).ToList();
 #pragma warning restore SKEXP0050 // Type is for evaluation purposes only
         
-        var results = new List<SemanticSearchRecord>();
-        var index = 0;
-        
-        foreach (var chunk in chunks)
-        {
-            var embedding = await embeddingGenerator.GenerateEmbeddingVectorAsync(chunk);
-            results.Add(new SemanticSearchRecord
-            {
-                Key = Guid.CreateVersion7().ToString(),
-                FileName = documentId,
-                PageNumber = index,
-                RecordType = "SharePointTranscript",
-                Text = chunk,
-                Vector = embedding
-            });
-            index++;
-        }
+        var embeddings = await embeddingGenerator.GenerateAsync(chunks);
 
-        return results;
+        return chunks.Zip(embeddings).Select((pair, index) => new SemanticSearchRecord
+        {
+            Key = $"{Path.GetFileNameWithoutExtension(documentId)}_{index}",
+            FileName = Path.GetFileName(sourceFile),
+            PageNumber = index,
+            RecordType = "SharePointTranscript",
+            Text = pair.First,
+            Vector = pair.Second.Vector
+        });
     }
 
     public Task<IEnumerable<SemanticSearchRecord>> CreateRecordsForDocumentAsyncForWiki(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator, string wikiLink)
@@ -128,6 +134,4 @@ public class SharePointTranscriptSource(string sourceDirectory) : IIngestionSour
         
         return string.Join(" ", transcriptText);
     }
-
-    public string SourceId => $"{nameof(SharePointTranscriptSource)}:{sourceDirectory}";
 }
