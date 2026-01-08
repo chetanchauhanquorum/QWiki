@@ -1,6 +1,7 @@
 # QWiki - RAG-Based AI Documentation Assistant
 
-QWiki is a **Retrieval Augmented Generation (RAG)** based AI Assistant designed to answer documentation-related queries from developers and provide relevant wiki or knowledge base articles as references for further exploration.
+QWiki is a **Retrieval Augmented Generation (RAG)** based AI Assistant designed to answer documentation-related queries from developers and provide relevant wiki, brownbag sessions or knowledge base articles as references for further exploration.
+
 
 ## What is QWiki?
 
