@@ -68,4 +68,9 @@ await DataIngestor.IngestDataAsync(
     app.Services,
     new PPTDirectorySource(Path.Combine(builder.Environment.WebRootPath, "Data")));
 
+// Ingest SharePoint video transcripts from the /wwwroot/Data directory
+await DataIngestor.IngestDataAsync(
+    app.Services,
+    new SharePointTranscriptSource(Path.Combine(builder.Environment.WebRootPath, "Data")));
+
 app.Run();
