@@ -92,6 +92,12 @@ public class SharePointTranscriptSource(string sourceDirectory) : IIngestionSour
         return Task.FromResult(Enumerable.Empty<SemanticSearchRecord>());
     }
 
+    public Task<IEnumerable<SemanticSearchRecord>> CreateRecordsForWikiCollectionAsync(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator, IEnumerable<string> rootPaths)
+    {
+        // SharePoint transcript source doesn't handle wiki collections
+        return Task.FromResult(Enumerable.Empty<SemanticSearchRecord>());
+    }
+
     private static async Task<string> ExtractTranscriptTextAsync(string vttFilePath)
     {
         var lines = await File.ReadAllLinesAsync(vttFilePath);
