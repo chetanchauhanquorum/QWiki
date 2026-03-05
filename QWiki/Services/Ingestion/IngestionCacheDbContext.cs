@@ -24,13 +24,21 @@ public class IngestionCacheDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        modelBuilder.Entity<IngestedDocument>().HasMany(d => d.Records).WithOne().HasForeignKey(r => r.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        
+        // Create composite key on (SourceId, Id) to allow same document IDs from different sources
+        modelBuilder.Entity<IngestedDocument>()
+            .HasKey(d => new { d.SourceId, d.Id });
+        
+        modelBuilder.Entity<IngestedDocument>()
+            .HasMany(d => d.Records)
+            .WithOne()
+            .HasForeignKey(r => new { r.DocumentSourceId, r.DocumentId })
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 
 public class IngestedDocument
 {
-    // TODO: Make Id+SourceId a composite key
     public required string Id { get; set; }
     public required string SourceId { get; set; }
     public required string Version { get; set; }
@@ -40,5 +48,6 @@ public class IngestedDocument
 public class IngestedRecord
 {
     public required string Id { get; set; }
+    public required string DocumentSourceId { get; set; }
     public required string DocumentId { get; set; }
 }
