@@ -100,6 +100,12 @@ public class PPTDirectorySource(string sourceDirectory) : IIngestionSource
         return Task.FromResult(Enumerable.Empty<SemanticSearchRecord>());
     }
 
+    public Task<IEnumerable<SemanticSearchRecord>> CreateRecordsForWikiCollectionAsync(IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator, IEnumerable<string> rootPaths)
+    {
+        // Wiki methods are not applicable for PPT files
+        return Task.FromResult(Enumerable.Empty<SemanticSearchRecord>());
+    }
+
     private static List<(int SlideNumber, string Text)> ExtractTextFromPowerPoint(string filePath)
     {
         var slideContents = new List<(int SlideNumber, string Text)>();

@@ -55,17 +55,25 @@ app.MapControllers();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-// By default, we ingest PDF files from the /wwwroot/Data directory. You can ingest from
-// other sources by implementing IIngestionSource.
+// Run ingestion in the background so the web app starts immediately.
 // Important: ensure that any content you ingest is trusted, as it may be reflected back
 // to users or could be a source of prompt injection risk.
-await DataIngestor.IngestDataAsync(
-    app.Services,
-    new PDFDirectorySource(builder.Configuration, Path.Combine(builder.Environment.WebRootPath, "Data")));
+_ = Task.Run(async () =>
+{
+    try
+    {
+        await DataIngestor.IngestDataAsync(
+            app.Services,
+            new PDFDirectorySource(builder.Configuration, Path.Combine(builder.Environment.WebRootPath, "Data")));
 
-// Ingest PowerPoint files from the same directory
-await DataIngestor.IngestDataAsync(
-    app.Services,
-    new PPTDirectorySource(Path.Combine(builder.Environment.WebRootPath, "Data")));
+        await DataIngestor.IngestDataAsync(
+            app.Services,
+            new PPTDirectorySource(Path.Combine(builder.Environment.WebRootPath, "Data")));
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Background ingestion failed");
+    }
+});
 
 app.Run();

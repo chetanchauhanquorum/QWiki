@@ -60,17 +60,34 @@ public class DataIngestor(
 
         await ingestionCacheDb.SaveChangesAsync();
 
-        // Process wiki links from configuration
+        // Process wiki ingestion - check for RootPaths first (bulk collection), then fall back to WikiLinks
+        var rootPaths = configuration.GetSection("WikiIngestion:RootPaths").Get<string[]>();
         var wikiLinks = configuration.GetSection("WikiIngestion:WikiLinks").Get<string[]>();
-        if (wikiLinks != null && wikiLinks.Length > 0)
+
+        if (rootPaths != null && rootPaths.Length > 0)
         {
-            logger.LogInformation("Processing {count} wiki links from configuration", wikiLinks.Length);
+            // Strategy A: Bulk wiki collection ingestion from root paths
+            logger.LogInformation("Starting bulk wiki ingestion from {count} root path(s): {paths}",
+                rootPaths.Length, string.Join(", ", rootPaths));
+
+            var newWikiRecords = await source.CreateRecordsForWikiCollectionAsync(embeddingGenerator, rootPaths);
+            var recordsList = newWikiRecords.ToList();
+
+            logger.LogInformation("Upserting {count} wiki records to vector store...", recordsList.Count);
+            await foreach (var id in vectorCollection.UpsertBatchAsync(recordsList)) { }
+
+            logger.LogInformation("Wiki collection ingestion complete: {count} records indexed", recordsList.Count);
+        }
+        else if (wikiLinks != null && wikiLinks.Length > 0)
+        {
+            // Backward compatibility: Process individual wiki links
+            logger.LogInformation("Processing {count} individual wiki links from configuration", wikiLinks.Length);
             var newWikiRecords = await source.CreateRecordsForMultipleWikiLinksAsync(embeddingGenerator, wikiLinks);
             await foreach (var id in vectorCollection.UpsertBatchAsync(newWikiRecords)) { }
         }
         else
         {
-            logger.LogWarning("No wiki links found in configuration under WikiIngestion:WikiLinks");
+            logger.LogWarning("No wiki configuration found. Add WikiIngestion:RootPaths or WikiIngestion:WikiLinks to appsettings.json");
         }
 
         logger.LogInformation("Ingestion is up-to-date");
