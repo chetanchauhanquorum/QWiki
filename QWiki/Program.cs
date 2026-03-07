@@ -1,6 +1,8 @@
+using Azure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.VectorData;
+using Microsoft.SemanticKernel;
 using QWiki.Components;
 using QWiki.Services;
 using QWiki.Services.Ingestion;
@@ -22,12 +24,14 @@ var openAIOptions = new OpenAIClientOptions()
 };
 
 var ghModelsClient = new OpenAIClient(credential, openAIOptions);
-var chatClient = ghModelsClient.AsChatClient("gpt-4o-mini");
-var embeddingGenerator = ghModelsClient.AsEmbeddingGenerator("text-embedding-3-small");
+var chatClient = ghModelsClient.GetChatClient("gpt-4o-mini").AsIChatClient();
+var embeddingGenerator = ghModelsClient.GetEmbeddingClient("text-embedding-3-small").AsIEmbeddingGenerator();
 
-var vectorStore = new JsonVectorStore(Path.Combine(AppContext.BaseDirectory, "vector-store"));
-
-builder.Services.AddSingleton<IVectorStore>(vectorStore);
+builder.Services.AddAzureAISearchVectorStore(
+    new Uri(builder.Configuration["AzureSearch:Endpoint"]
+        ?? throw new InvalidOperationException("Missing configuration: AzureSearch:Endpoint. Set it in appsettings.json.")),
+    new AzureKeyCredential(builder.Configuration["AzureSearch:ApiKey"]
+        ?? throw new InvalidOperationException("Missing configuration: AzureSearch:ApiKey. Use 'dotnet user-secrets set AzureSearch:ApiKey YOUR-KEY'.")));
 builder.Services.AddScoped<DataIngestor>();
 builder.Services.AddSingleton<SemanticSearch>();
 builder.Services.AddChatClient(chatClient).UseFunctionInvocation().UseLogging();
@@ -69,16 +73,15 @@ _ = Task.Run(async () =>
         await DataIngestor.IngestDataAsync(
             app.Services,
             new PPTDirectorySource(Path.Combine(builder.Environment.WebRootPath, "Data")));
+
+        await DataIngestor.IngestDataAsync(
+            app.Services,
+            new SharePointTranscriptSource(Path.Combine(builder.Environment.WebRootPath, "Data")));
     }
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "Background ingestion failed");
     }
 });
-
-// Ingest SharePoint video transcripts from the /wwwroot/Data directory
-await DataIngestor.IngestDataAsync(
-    app.Services,
-    new SharePointTranscriptSource(Path.Combine(builder.Environment.WebRootPath, "Data")));
 
 app.Run();

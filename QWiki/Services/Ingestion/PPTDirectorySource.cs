@@ -79,7 +79,7 @@ public class PPTDirectorySource(string sourceDirectory) : IIngestionSource
 
         return paragraphs.Zip(embeddings).Select((pair, index) => new SemanticSearchRecord
         {
-            Key = $"{Path.GetFileNameWithoutExtension(documentId)}_slide{pair.First.SlideNumber}_{pair.First.IndexOnSlide}",
+            Key = PDFDirectorySource.SanitizeKey($"{Path.GetFileNameWithoutExtension(documentId)}_slide{pair.First.SlideNumber}_{pair.First.IndexOnSlide}"),
             FileName = documentId,
             PageNumber = pair.First.SlideNumber,
             Text = pair.First.Text,

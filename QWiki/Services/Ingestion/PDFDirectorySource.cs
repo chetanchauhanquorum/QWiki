@@ -17,6 +17,13 @@ public class PDFDirectorySource(IConfiguration configuration, string sourceDirec
 
     public static string SourceFileId(string path) => Path.GetFileName(path);
 
+    /// <summary>
+    /// Sanitizes a record key to be compatible with Azure AI Search document key requirements.
+    /// Azure AI Search keys only allow letters, digits, dashes, underscores, and equal signs.
+    /// </summary>
+    public static string SanitizeKey(string key) =>
+        Regex.Replace(key, @"[^a-zA-Z0-9_\-=]", "-");
+
     public string SourceId => $"{nameof(PDFDirectorySource)}:{sourceDirectory}";
 
     public async Task<IEnumerable<IngestedDocument>> GetNewOrModifiedDocumentsAsync(IQueryable<IngestedDocument> existingDocuments)
@@ -62,7 +69,7 @@ public class PDFDirectorySource(IConfiguration configuration, string sourceDirec
 
         return paragraphs.Zip(embeddings).Select((pair, index) => new SemanticSearchRecord
         {
-            Key = $"{Path.GetFileNameWithoutExtension(documentId)}_{pair.First.PageNumber}_{pair.First.IndexOnPage}",
+            Key = SanitizeKey($"{Path.GetFileNameWithoutExtension(documentId)}_{pair.First.PageNumber}_{pair.First.IndexOnPage}"),
             FileName = documentId,
             PageNumber = pair.First.PageNumber,
             Text = pair.First.Text,
@@ -116,7 +123,7 @@ public class PDFDirectorySource(IConfiguration configuration, string sourceDirec
 
         return chunks.Zip(embeddings).Select((pair, index) => new SemanticSearchRecord
         {
-            Key = $"{wikiLink}_{index}",
+            Key = SanitizeKey($"{wikiLink}_{index}"),
             RecordType = "WIKI",
             FileName = wikiLink.Split('/').LastOrDefault() ?? wikiLink, // Use the last part of the path as display name
             SourceUrl = userFriendlyUrl,

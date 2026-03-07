@@ -5,23 +5,21 @@ namespace QWiki.Services;
 
 public class SemanticSearch(
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-    IVectorStore vectorStore)
+    VectorStore vectorStore)
 {
     public async Task<IReadOnlyList<SemanticSearchRecord>> SearchAsync(string text, string? filenameFilter, int maxResults)
     {
-        var queryEmbedding = await embeddingGenerator.GenerateEmbeddingVectorAsync(text);
+        var queryEmbedding = await embeddingGenerator.GenerateVectorAsync(text);
         var vectorCollection = vectorStore.GetCollection<string, SemanticSearchRecord>("data-qwiki-ingested");
-        var filter = filenameFilter is { Length: > 0 }
-            ? new VectorSearchFilter().EqualTo(nameof(SemanticSearchRecord.FileName), filenameFilter)
-            : null;
 
-        var nearest = await vectorCollection.VectorizedSearchAsync(queryEmbedding, new VectorSearchOptions
+        var options = new VectorSearchOptions<SemanticSearchRecord>();
+        if (filenameFilter is { Length: > 0 })
         {
-            Top = maxResults,
-            Filter = filter,
-        });
+            options.Filter = r => r.FileName == filenameFilter;
+        }
+
         var results = new List<SemanticSearchRecord>();
-        await foreach (var item in nearest.Results)
+        await foreach (var item in vectorCollection.SearchAsync(queryEmbedding, maxResults, options))
         {
             results.Add(item.Record);
         }

@@ -71,7 +71,7 @@ public class SharePointTranscriptSource(string sourceDirectory) : IIngestionSour
 
         return chunks.Zip(embeddings).Select((pair, index) => new SemanticSearchRecord
         {
-            Key = $"{Path.GetFileNameWithoutExtension(documentId)}_{index}",
+            Key = PDFDirectorySource.SanitizeKey($"{Path.GetFileNameWithoutExtension(documentId)}_{index}"),
             FileName = Path.GetFileName(sourceFile),
             PageNumber = index,
             RecordType = "SharePointTranscript",

@@ -4,24 +4,24 @@ namespace QWiki.Services;
 
 public class SemanticSearchRecord
 {
-    [VectorStoreRecordKey]
+    [VectorStoreKey]
     public required string Key { get; set; }
 
-    [VectorStoreRecordData]
+    [VectorStoreData(IsIndexed = true)]
     public required string FileName { get; set; }
 
-    [VectorStoreRecordData]
+    [VectorStoreData]
     public int PageNumber { get; set; }
 
-    [VectorStoreRecordData]
+    [VectorStoreData(IsIndexed = true)]
     public string RecordType { get; set; } = "PDF";
 
-    [VectorStoreRecordData]
+    [VectorStoreData]
     public string? SourceUrl { get; set; }
 
-    [VectorStoreRecordData]
+    [VectorStoreData(IsFullTextIndexed = true)]
     public required string Text { get; set; }
 
-    [VectorStoreRecordVector(1536, DistanceFunction.CosineSimilarity)] // 1536 is the default vector size for the OpenAI text-embedding-3-small model
+    [VectorStoreVector(1536, DistanceFunction = DistanceFunction.CosineSimilarity)] // 1536 is the default vector size for the OpenAI text-embedding-3-small model
     public ReadOnlyMemory<float> Vector { get; set; }
 }
