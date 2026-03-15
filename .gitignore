@@ -363,3 +363,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Local SharePoint data for dev/test ingestion
+QWiki/LocalData/
+
+# FFmpeg binaries (auto-downloaded by Xabe.FFmpeg)
+ffmpeg/

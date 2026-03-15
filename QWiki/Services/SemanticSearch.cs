@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.VectorData;
+using QWiki.Shared;
 
 namespace QWiki.Services;
 
@@ -10,7 +11,7 @@ public class SemanticSearch(
     public async Task<IReadOnlyList<SemanticSearchRecord>> SearchAsync(string text, string? filenameFilter, int maxResults)
     {
         var queryEmbedding = await embeddingGenerator.GenerateVectorAsync(text);
-        var vectorCollection = vectorStore.GetCollection<string, SemanticSearchRecord>("data-qwiki-ingested");
+        var vectorCollection = vectorStore.GetCollection<string, SemanticSearchRecord>(EmbeddingConfig.IndexName);
 
         var options = new VectorSearchOptions<SemanticSearchRecord>();
         if (filenameFilter is { Length: > 0 })

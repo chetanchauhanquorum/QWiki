@@ -1,0 +1,14 @@
+# Code owners for QWiki repository
+# These users will be automatically requested for review when PRs touch these files
+
+# Default owner for everything in the repo
+* @chetanchauhanquorum
+
+# Backend services
+/QWiki/Services/ @chetanchauhanquorum
+
+# Controllers
+/QWiki/Controllers/ @chetanchauhanquorum
+
+# Blazor components
+/QWiki/Components/ @chetanchauhanquorum

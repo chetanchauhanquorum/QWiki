@@ -30,20 +30,15 @@
         Use the search tool to find relevant information. When you do this, end your
         reply with citations in the special XML format:
 
-        For PDF documents:
-        <citation filename='string' page_number='number'>exact quote here</citation>
-
-        For PowerPoint documents:
         <citation filename='string' page_number='number' source_url='url'>exact quote here</citation>
-
-        For Wiki pages:
-        <citation filename='string' page_number='number' source_url='url'>exact quote here</citation>
-
-        For Video transcripts (VTT):
-        <citation filename='string' page_number='number'>exact quote here</citation>
 
         Always include the citation in your response if there are results.
-        For PowerPoint and wiki pages, always include the source_url attribute if it's available in the search results.
+        Always include the source_url attribute if it's available in the search results.
+
+        When results have record_type=""VIDEO"", these are from video recording transcripts.
+        Mention that the information comes from a video recording and include the timestamp
+        shown in brackets (e.g. [05:30]) so users know where in the video to look.
+        If a source_url is available, tell the user they can open the video in SharePoint.
 
         The quote must be max 5 words, taken word-for-word from the search result, and is the basis for why the citation is relevant.
         Don't refer to the presence of citations; just emit these tags right at the end, with no surrounding text.
@@ -76,8 +71,12 @@
         currentResponseMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
         currentResponseCancellation = new();
 
-        // Pass a copy of the messages then add messages to the list while handling the streaming responses
-        var requestMessages = messages.ToArray();
+        // Pass a sliding window of messages to stay within the LLM token limit.
+        // Always include the system prompt (first message) plus the most recent messages.
+        const int maxMessages = 10;
+        var requestMessages = messages.Count <= maxMessages
+            ? messages.ToArray()
+            : [messages[0], .. messages[^(maxMessages - 1)..]];
 
         await foreach (var update in ChatClient.GetStreamingResponseAsync(requestMessages, chatOptions, currentResponseCancellation.Token))
         {
@@ -135,15 +134,16 @@
         [Description("Whenever possible, specify the filename to search that file only. If not provided, the search includes all files.")] string? filenameFilter = null)
     {
         await InvokeAsync(StateHasChanged);
-        var results = await Search.SearchAsync(searchPhrase, filenameFilter, maxResults: 5);
+        var results = await Search.SearchAsync(searchPhrase, filenameFilter, maxResults: 3);
         return results.Select(result =>
         {
+            var text = result.Text.Length > 500 ? result.Text[..500] + "..." : result.Text;
             var resultXml = $"<result filename=\"{result.FileName}\" page_number=\"{result.PageNumber}\" record_type=\"{result.RecordType}\"";
             if (!string.IsNullOrEmpty(result.SourceUrl))
             {
                 resultXml += $" source_url=\"{result.SourceUrl}\"";
             }
-            resultXml += $">{result.Text}</result>";
+            resultXml += $">{text}</result>";
             return resultXml;
         });
     }

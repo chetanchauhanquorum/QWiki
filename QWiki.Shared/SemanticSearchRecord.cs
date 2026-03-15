@@ -1,6 +1,6 @@
-﻿using Microsoft.Extensions.VectorData;
+using Microsoft.Extensions.VectorData;
 
-namespace QWiki.Services;
+namespace QWiki.Shared;
 
 public class SemanticSearchRecord
 {
@@ -22,6 +22,6 @@ public class SemanticSearchRecord
     [VectorStoreData(IsFullTextIndexed = true)]
     public required string Text { get; set; }
 
-    [VectorStoreVector(1536, DistanceFunction = DistanceFunction.CosineSimilarity)] // 1536 is the default vector size for the OpenAI text-embedding-3-small model
+    [VectorStoreVector(EmbeddingConfig.VectorDimension, DistanceFunction = DistanceFunction.CosineSimilarity)]
     public ReadOnlyMemory<float> Vector { get; set; }
 }

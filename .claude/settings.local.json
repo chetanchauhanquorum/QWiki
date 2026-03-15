@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(taskkill:*)",
+      "Bash(cmd /c:*)",
+      "Bash(ping:*)",
+      "Bash(powershell -Command:*)"
+    ]
+  }
+}
