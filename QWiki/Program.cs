@@ -1,5 +1,10 @@
 using Azure;
+using Azure.Search.Documents;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.AI;
+using Microsoft.Identity.Web;
+using Microsoft.Identity.Web.UI;
 using Microsoft.SemanticKernel;
 using QWiki.Components;
 using QWiki.Ingestion;
@@ -25,15 +30,44 @@ var ghModelsClient = new OpenAIClient(credential, openAIOptions);
 var chatClient = ghModelsClient.GetChatClient("gpt-4o-mini").AsIChatClient();
 var embeddingGenerator = ghModelsClient.GetEmbeddingClient(EmbeddingConfig.ModelName).AsIEmbeddingGenerator();
 
-builder.Services.AddAzureAISearchVectorStore(
-    new Uri(builder.Configuration["AzureSearch:Endpoint"]
-        ?? throw new InvalidOperationException("Missing configuration: AzureSearch:Endpoint. Set it in appsettings.json.")),
-    new AzureKeyCredential(builder.Configuration["AzureSearch:ApiKey"]
-        ?? throw new InvalidOperationException("Missing configuration: AzureSearch:ApiKey. Use 'dotnet user-secrets set AzureSearch:ApiKey YOUR-KEY'.")));
+var searchEndpoint = new Uri(builder.Configuration["AzureSearch:Endpoint"]
+    ?? throw new InvalidOperationException("Missing configuration: AzureSearch:Endpoint. Set it in appsettings.json."));
+var searchCredential = new AzureKeyCredential(builder.Configuration["AzureSearch:ApiKey"]
+    ?? throw new InvalidOperationException("Missing configuration: AzureSearch:ApiKey. Use 'dotnet user-secrets set AzureSearch:ApiKey YOUR-KEY'."));
 
+builder.Services.AddAzureAISearchVectorStore(searchEndpoint, searchCredential);
+builder.Services.AddSingleton(new SearchClient(searchEndpoint, EmbeddingConfig.IndexName, searchCredential));
 builder.Services.AddSingleton<SemanticSearch>();
 builder.Services.AddChatClient(chatClient).UseFunctionInvocation().UseLogging();
 builder.Services.AddEmbeddingGenerator(embeddingGenerator);
+
+// Azure Table Storage services (feedback, chat history, admin)
+var storageConnectionString = builder.Configuration["AzureStorage:ConnectionString"]
+    ?? throw new InvalidOperationException("Missing AzureStorage:ConnectionString. Use 'dotnet user-secrets set AzureStorage:ConnectionString YOUR-CONNECTION-STRING'.");
+builder.Services.AddSingleton(new AzureTableIngestionCache(storageConnectionString));
+builder.Services.AddSingleton(new FeedbackService(storageConnectionString));
+builder.Services.AddSingleton(new ChatHistoryService(storageConnectionString));
+
+// Authentication & Authorization (Microsoft Entra ID)
+builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
+    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
+
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+
+    options.AddPolicy("AdminOnly", policy =>
+        policy.RequireClaim("http://schemas.microsoft.com/identity/claims/objectidentifier",
+            builder.Configuration["AdminSettings:AdminObjectId"]!));
+});
+
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddControllersWithViews().AddMicrosoftIdentityUI();
+
+// Ingestion progress tracking (always registered so admin page can inject it)
+builder.Services.AddSingleton<IngestionProgressService>();
 
 // Dev-mode: run ingestion in-process (production uses the separate Worker Service)
 var runIngestionInProcess = builder.Configuration.GetValue<bool>("RunIngestionInProcess");
@@ -53,10 +87,13 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseAntiforgery();
-
 app.UseStaticFiles();
 
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseAntiforgery();
+
+app.MapControllers();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

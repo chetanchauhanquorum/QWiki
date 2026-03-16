@@ -1,10 +1,25 @@
 .chat-header-container {
-    top: 0; 
-    padding: 1.5rem; 
+    top: 0;
+    padding: 1.5rem;
 }
 
 .chat-header-controls {
-    margin-bottom: 1.5rem; 
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.chat-header-left {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.chat-header-right {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
 }
 
 h1 {
@@ -12,10 +27,15 @@ h1 {
     text-overflow: ellipsis;
 }
 
-.new-chat-icon {
+.header-icon {
     width: 1.25rem;
     height: 1.25rem;
     color: rgb(55, 65, 81);
+}
+
+.user-display {
+    font-size: 0.8125rem;
+    color: rgb(107, 114, 128);
 }
 
 @media (min-width: 768px) {

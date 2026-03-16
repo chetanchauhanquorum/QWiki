@@ -10,7 +10,8 @@ public class DataIngestor(
     ILogger<DataIngestor> logger,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     VectorStore vectorStore,
-    AzureTableIngestionCache ingestionCache)
+    AzureTableIngestionCache ingestionCache,
+    IngestionProgressService progress)
 {
     public async Task IngestDataAsync(IIngestionSource source)
     {
@@ -42,22 +43,38 @@ public class DataIngestor(
 
         // Handle new/modified
         var modifiedDocs = await source.GetNewOrModifiedDocumentsAsync(existingDocs);
-        foreach (var modifiedDoc in modifiedDocs)
+        var modifiedList = modifiedDocs.ToList();
+        progress.SetProcessing(source.SourceId, modifiedList.Count);
+
+        int errorCount = 0;
+        foreach (var modifiedDoc in modifiedList)
         {
+            progress.FileStarted(modifiedDoc.Id);
             logger.LogInformation("Processing {File}", modifiedDoc.Id);
 
-            if (modifiedDoc.RecordKeys.Count > 0)
+            try
             {
-                await vectorCollection.DeleteAsync(modifiedDoc.RecordKeys);
+                if (modifiedDoc.RecordKeys.Count > 0)
+                {
+                    await vectorCollection.DeleteAsync(modifiedDoc.RecordKeys);
+                }
+
+                var newRecords = (await source.CreateRecordsForDocumentAsync(embeddingGenerator, modifiedDoc.Id)).ToList();
+                await vectorCollection.UpsertAsync(newRecords);
+
+                modifiedDoc.RecordKeys = newRecords.Select(r => r.Key).ToList();
+                await ingestionCache.SaveDocumentAsync(modifiedDoc);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error processing {File}", modifiedDoc.Id);
+                errorCount++;
             }
 
-            var newRecords = (await source.CreateRecordsForDocumentAsync(embeddingGenerator, modifiedDoc.Id)).ToList();
-            await vectorCollection.UpsertAsync(newRecords);
-
-            modifiedDoc.RecordKeys = newRecords.Select(r => r.Key).ToList();
-            await ingestionCache.SaveDocumentAsync(modifiedDoc);
+            progress.FileCompleted();
         }
 
+        progress.SourceCompleted(source.SourceId, modifiedList.Count - errorCount, existingDocs.Count, errorCount);
         logger.LogInformation("Ingestion is up-to-date for source {SourceId}", source.SourceId);
     }
 }

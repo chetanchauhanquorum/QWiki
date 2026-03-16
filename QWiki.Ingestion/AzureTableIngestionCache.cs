@@ -26,6 +26,35 @@ public class AzureTableIngestionCache
     }
 
     /// <summary>
+    /// Loads all ingested documents across all sources.
+    /// </summary>
+    public async Task<List<IngestedDocument>> LoadAllDocumentsAsync()
+    {
+        var results = new List<IngestedDocument>();
+
+        await foreach (var entity in _tableClient.QueryAsync<TableEntity>())
+        {
+            var docId = UnsanitizeRowKey(entity.RowKey!);
+            var version = entity.GetString("Version") ?? "";
+            var recordKeysStr = entity.GetString("RecordKeys") ?? "";
+
+            var recordKeys = string.IsNullOrEmpty(recordKeysStr)
+                ? new List<string>()
+                : recordKeysStr.Split('|', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            results.Add(new IngestedDocument
+            {
+                Id = docId,
+                SourceId = entity.PartitionKey!,
+                Version = version,
+                RecordKeys = recordKeys
+            });
+        }
+
+        return results;
+    }
+
+    /// <summary>
     /// Loads all ingested documents for a given source into a dictionary keyed by document ID.
     /// </summary>
     public async Task<Dictionary<string, IngestedDocument>> LoadDocumentsAsync(string sourceId)

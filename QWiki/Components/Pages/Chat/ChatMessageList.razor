@@ -4,12 +4,12 @@
     <chat-messages class="page-width message-list" in-progress="@(InProgressMessage is not null)">
         @foreach (var message in Messages)
         {
-            <ChatMessageItem @key="@message" Message="@message" />
+            <ChatMessageItem @key="@message" Message="@message" ConversationId="@ConversationId" UserId="@UserId" PrecedingUserQuery="@GetPrecedingUserQuery(message)" />
         }
 
         @if (InProgressMessage is not null)
         {
-            <ChatMessageItem Message="@InProgressMessage" InProgress="true" />
+            <ChatMessageItem Message="@InProgressMessage" InProgress="true" ConversationId="@ConversationId" UserId="@UserId" />
             <LoadingSpinner />
         }
         else if (IsEmpty)
@@ -29,7 +29,27 @@
     [Parameter]
     public RenderFragment? NoMessagesContent { get; set; }
 
+    [Parameter]
+    public string ConversationId { get; set; } = "";
+
+    [Parameter]
+    public string UserId { get; set; } = "";
+
     private bool IsEmpty => !Messages.Any(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
+
+    private string? GetPrecedingUserQuery(ChatMessage message)
+    {
+        if (message.Role != ChatRole.Assistant) return null;
+        var messagesList = Messages.ToList();
+        var index = messagesList.IndexOf(message);
+        // Walk backwards to find the most recent user message
+        for (var i = index - 1; i >= 0; i--)
+        {
+            if (messagesList[i].Role == ChatRole.User && !string.IsNullOrEmpty(messagesList[i].Text))
+                return messagesList[i].Text;
+        }
+        return null;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

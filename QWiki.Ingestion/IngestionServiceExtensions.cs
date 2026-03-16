@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using QWiki.Ingestion.Sources;
 
@@ -11,19 +12,19 @@ namespace QWiki.Ingestion;
 public static class IngestionServiceExtensions
 {
     /// <summary>
-    /// Registers all ingestion services (cache, transcriber, ingestor, sources) into the DI container.
+    /// Registers all ingestion services (cache, ingestor, sources) into the DI container.
     /// </summary>
     public static IServiceCollection AddIngestionServices(
         this IServiceCollection services, IConfiguration configuration)
     {
-        // Persistent ingestion cache (Azure Table Storage)
-        services.AddSingleton(new AzureTableIngestionCache(
+        // Persistent ingestion cache (Azure Table Storage) — skip if already registered (e.g., by QWiki UI Program.cs)
+        services.TryAddSingleton(new AzureTableIngestionCache(
             configuration["AzureStorage:ConnectionString"]
                 ?? throw new InvalidOperationException(
                     "Missing AzureStorage:ConnectionString. Use 'dotnet user-secrets set AzureStorage:ConnectionString YOUR-CONNECTION-STRING'.")));
 
-        // Audio transcriber (singleton — caches FFmpeg download + blob container client)
-        services.AddSingleton<AudioTranscriber>();
+        // Ingestion progress tracking (singleton — shared with admin UI)
+        services.TryAddSingleton<IngestionProgressService>();
 
         // Data ingestor
         services.AddTransient<DataIngestor>();
@@ -31,11 +32,6 @@ public static class IngestionServiceExtensions
         // Ingestion sources
         services.AddTransient<WikiIngestionSource>();
         services.AddTransient<SharePointIngestionSource>();
-
-        if (configuration.GetValue<bool>("LocalFolderIngestion:Enabled"))
-        {
-            services.AddTransient<LocalFolderIngestionSource>();
-        }
 
         return services;
     }
@@ -47,11 +43,14 @@ public static class IngestionServiceExtensions
     public static async Task RunIngestionAsync(IServiceProvider services, CancellationToken ct = default)
     {
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("QWiki.Ingestion");
-        var configuration = services.GetRequiredService<IConfiguration>();
+        var progress = services.GetRequiredService<IngestionProgressService>();
+
+        progress.StartIngestion();
 
         // Wiki ingestion
         try
         {
+            progress.SetDiscovering("Wiki");
             logger.LogInformation("Starting wiki ingestion...");
             var ingestor = services.GetRequiredService<DataIngestor>();
             var wikiSource = services.GetRequiredService<WikiIngestionSource>();
@@ -60,13 +59,15 @@ public static class IngestionServiceExtensions
         catch (Exception ex)
         {
             logger.LogError(ex, "Wiki ingestion failed");
+            progress.SourceFailed("Wiki", ex.Message);
         }
 
-        if (ct.IsCancellationRequested) return;
+        if (ct.IsCancellationRequested) { progress.IngestionCompleted(); return; }
 
         // SharePoint ingestion
         try
         {
+            progress.SetDiscovering("SharePoint");
             logger.LogInformation("Starting SharePoint ingestion...");
             var ingestor = services.GetRequiredService<DataIngestor>();
             var spSource = services.GetRequiredService<SharePointIngestionSource>();
@@ -76,26 +77,10 @@ public static class IngestionServiceExtensions
         catch (Exception ex)
         {
             logger.LogError(ex, "SharePoint ingestion failed");
+            progress.SourceFailed("SharePoint", ex.Message);
         }
 
-        if (ct.IsCancellationRequested) return;
-
-        // Local folder ingestion (if enabled)
-        if (configuration.GetValue<bool>("LocalFolderIngestion:Enabled"))
-        {
-            try
-            {
-                logger.LogInformation("Starting local folder ingestion...");
-                var ingestor = services.GetRequiredService<DataIngestor>();
-                var lfSource = services.GetRequiredService<LocalFolderIngestionSource>();
-                await ingestor.IngestDataAsync(lfSource);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Local folder ingestion failed");
-            }
-        }
-
+        progress.IngestionCompleted();
         logger.LogInformation("All ingestion sources processed");
     }
 }

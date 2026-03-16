@@ -132,6 +132,8 @@ public class WikiIngestionSource : IIngestionSource
         }
 
         var userFriendlyUrl = BuildUserFriendlyUrl(documentId);
+        var documentTitle = ExtractTitleFromMarkdown(content) ?? documentId.Split('/').LastOrDefault() ?? documentId;
+        var folderPath = documentId.Contains('/') ? documentId[..documentId.LastIndexOf('/')] : "";
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var embeddings = await embeddingGenerator.GenerateAsync(chunks, cancellationToken: cts.Token);
@@ -142,6 +144,10 @@ public class WikiIngestionSource : IIngestionSource
             RecordType = "WIKI",
             FileName = documentId.Split('/').LastOrDefault() ?? documentId,
             SourceUrl = userFriendlyUrl,
+            SourceType = "Wiki",
+            DocumentTitle = documentTitle,
+            LastModified = "",
+            FolderPath = folderPath,
             PageNumber = 1,
             Text = pair.First,
             Vector = pair.Second.Vector,
@@ -210,6 +216,12 @@ public class WikiIngestionSource : IIngestionSource
 
         _logger.LogInformation("Found {Count} wiki pages under '{Root}'", allPaths.Count, rootPath);
         return allPaths;
+    }
+
+    private static string? ExtractTitleFromMarkdown(string content)
+    {
+        var match = Regex.Match(content, @"^#\s+(.+)", RegexOptions.Multiline);
+        return match.Success ? match.Groups[1].Value.Trim() : null;
     }
 
     private static string BuildUserFriendlyUrl(string pagePath) =>

@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.Data.Tables" Version="12.9.1" />
     <PackageReference Include="Microsoft.Extensions.VectorData.Abstractions" Version="10.0.1" />
   </ItemGroup>
 

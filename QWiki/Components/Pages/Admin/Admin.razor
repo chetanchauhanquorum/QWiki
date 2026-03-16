@@ -1,0 +1,298 @@
+@page "/admin"
+@attribute [Authorize(Policy = "AdminOnly")]
+@inject AzureTableIngestionCache IngestionCache
+@inject FeedbackService FeedbackService
+@inject IngestionProgressService IngestionProgress
+@implements IDisposable
+
+<PageTitle>QWiki Admin</PageTitle>
+
+<div class="admin-container page-width">
+    <div class="admin-header">
+        <h1>Content Management</h1>
+        <a href="/" class="btn-default">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="admin-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+            </svg>
+            Back to Chat
+        </a>
+    </div>
+
+    <!-- Ingestion Progress -->
+    @if (IngestionProgress.IsRunning || IngestionProgress.CompletedAt.HasValue)
+    {
+        <div class="ingestion-status">
+            <div class="ingestion-header">
+                <h2>
+                    @if (IngestionProgress.IsRunning)
+                    {
+                        <span class="status-badge running">Running</span>
+                    }
+                    else
+                    {
+                        <span class="status-badge complete">Complete</span>
+                    }
+                    Ingestion
+                </h2>
+                @if (IngestionProgress.StartedAt.HasValue)
+                {
+                    <span class="ingestion-time">
+                        @if (IngestionProgress.IsRunning)
+                        {
+                            @($"Started {FormatTimeAgo(IngestionProgress.StartedAt.Value)}")
+                        }
+                        else if (IngestionProgress.CompletedAt.HasValue)
+                        {
+                            @($"Completed {FormatTimeAgo(IngestionProgress.CompletedAt.Value)}")
+                        }
+                    </span>
+                }
+            </div>
+
+            @if (IngestionProgress.IsRunning)
+            {
+                <div class="ingestion-current">
+                    <div class="progress-source-name">@IngestionProgress.CurrentSource</div>
+                    <div class="progress-phase">@IngestionProgress.Phase</div>
+
+                    @if (IngestionProgress.Phase == "Processing" && IngestionProgress.TotalFiles > 0)
+                    {
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" style="width: @(ProgressPercent)%"></div>
+                        </div>
+                        <div class="progress-counts">@IngestionProgress.ProcessedFiles / @IngestionProgress.TotalFiles files</div>
+                    }
+                    else if (IngestionProgress.Phase == "Discovering")
+                    {
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill indeterminate"></div>
+                        </div>
+                        <div class="progress-counts">Scanning for documents...</div>
+                    }
+                    else if (IngestionProgress.Phase == "Up to date")
+                    {
+                        <div class="progress-counts">All documents up to date</div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(IngestionProgress.CurrentFile))
+                    {
+                        <div class="progress-current-file" title="@IngestionProgress.CurrentFile">
+                            @TruncateDocId(IngestionProgress.CurrentFile)
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (IngestionProgress.SourceResults.Count > 0)
+            {
+                <div class="ingestion-results">
+                    @foreach (var source in IngestionProgress.SourceResults)
+                    {
+                        <div class="ingestion-result-row">
+                            <span class="source-badge @source.SourceName.ToLowerInvariant()">@source.SourceName</span>
+                            <span class="result-detail">@source.Processed processed</span>
+                            <span class="result-detail muted">@source.Skipped unchanged</span>
+                            @if (source.Errors > 0)
+                            {
+                                <span class="result-detail error">@source.Errors errors</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (loading)
+    {
+        <div class="admin-loading">Loading documents...</div>
+    }
+    else if (loadError != null)
+    {
+        <div class="admin-error">@loadError</div>
+    }
+    else
+    {
+        <!-- Summary Cards -->
+        <div class="admin-cards">
+            @foreach (var group in documentsBySource)
+            {
+                <div class="admin-card">
+                    <div class="admin-card-value">@group.Value.Count</div>
+                    <div class="admin-card-label">@group.Key</div>
+                    <div class="admin-card-detail">@group.Value.Sum(d => d.RecordKeys.Count) chunks</div>
+                </div>
+            }
+            <div class="admin-card">
+                <div class="admin-card-value">@totalDocuments</div>
+                <div class="admin-card-label">Total Documents</div>
+                <div class="admin-card-detail">@totalChunks chunks</div>
+            </div>
+            <div class="admin-card">
+                <div class="admin-card-value feedback-positive">@feedbackPositive</div>
+                <div class="admin-card-label">Positive Feedback</div>
+                <div class="admin-card-detail">@feedbackNegative negative</div>
+            </div>
+        </div>
+
+        <!-- Source Filter -->
+        <div class="admin-filter">
+            <label>Filter by source:</label>
+            <select @bind="selectedSource">
+                <option value="">All sources</option>
+                @foreach (var source in documentsBySource.Keys)
+                {
+                    <option value="@source">@source</option>
+                }
+            </select>
+        </div>
+
+        <!-- Document Table -->
+        <div class="admin-table-container">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Document</th>
+                        <th>Source</th>
+                        <th>Chunks</th>
+                        <th>Version</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var doc in FilteredDocuments)
+                    {
+                        <tr class="@(reingesting.Contains(doc.Id) ? "reingesting" : "")">
+                            <td class="doc-id" title="@doc.Id">@TruncateDocId(doc.Id)</td>
+                            <td><span class="source-badge @doc.SourceId.ToLowerInvariant()">@doc.SourceId</span></td>
+                            <td>@doc.RecordKeys.Count</td>
+                            <td class="version-cell" title="@doc.Version">@TruncateVersion(doc.Version)</td>
+                            <td>
+                                @if (reingesting.Contains(doc.Id))
+                                {
+                                    <span class="reingest-pending">Pending re-ingest</span>
+                                }
+                                else
+                                {
+                                    <button class="btn-subtle btn-sm" @onclick="@(() => MarkForReingestionAsync(doc))">
+                                        Re-ingest
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (FilteredDocuments.Count == 0)
+        {
+            <div class="admin-empty">No documents found.</div>
+        }
+
+        <!-- Recent Feedback -->
+        @if (recentFeedback.Count > 0)
+        {
+            <h2>Recent Feedback</h2>
+            <div class="admin-table-container">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Rating</th>
+                            <th>User Query</th>
+                            <th>Response (excerpt)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fb in recentFeedback)
+                        {
+                            <tr>
+                                <td>@fb.Timestamp.LocalDateTime.ToString("MMM d, h:mm tt")</td>
+                                <td>@(fb.IsPositive ? "+" : "-")</td>
+                                <td class="feedback-query">@fb.UserQuery</td>
+                                <td class="feedback-response">@Truncate(fb.AssistantResponse, 80)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<IngestedDocument> allDocuments = [];
+    private Dictionary<string, List<IngestedDocument>> documentsBySource = new();
+    private List<FeedbackEntry> recentFeedback = [];
+    private HashSet<string> reingesting = new();
+    private int feedbackPositive, feedbackNegative;
+    private int totalDocuments, totalChunks;
+    private string selectedSource = "";
+    private bool loading = true;
+    private string? loadError;
+    private Timer? pollTimer;
+
+    private int ProgressPercent => IngestionProgress.TotalFiles > 0
+        ? (int)(100.0 * IngestionProgress.ProcessedFiles / IngestionProgress.TotalFiles)
+        : 0;
+
+    private List<IngestedDocument> FilteredDocuments =>
+        string.IsNullOrEmpty(selectedSource)
+            ? allDocuments
+            : allDocuments.Where(d => d.SourceId == selectedSource).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            allDocuments = await IngestionCache.LoadAllDocumentsAsync();
+            documentsBySource = allDocuments
+                .GroupBy(d => d.SourceId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            totalDocuments = allDocuments.Count;
+            totalChunks = allDocuments.Sum(d => d.RecordKeys.Count);
+
+            (feedbackPositive, feedbackNegative) = await FeedbackService.GetFeedbackCountsAsync();
+            recentFeedback = await FeedbackService.GetRecentFeedbackAsync(10);
+        }
+        catch (Exception ex)
+        {
+            loadError = $"Failed to load data: {ex.Message}";
+        }
+
+        loading = false;
+
+        // Poll ingestion progress every 2 seconds
+        pollTimer = new Timer(_ => InvokeAsync(StateHasChanged), null, 0, 2000);
+    }
+
+    private async Task MarkForReingestionAsync(IngestedDocument doc)
+    {
+        await IngestionCache.DeleteDocumentAsync(doc.SourceId, doc.Id);
+        reingesting.Add(doc.Id);
+    }
+
+    private static string FormatTimeAgo(DateTimeOffset time)
+    {
+        var elapsed = DateTimeOffset.UtcNow - time;
+        if (elapsed.TotalSeconds < 60) return $"{(int)elapsed.TotalSeconds}s ago";
+        if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes}m ago";
+        return $"{(int)elapsed.TotalHours}h ago";
+    }
+
+    private static string TruncateDocId(string id) =>
+        id.Length > 60 ? "..." + id[^57..] : id;
+
+    private static string TruncateVersion(string version) =>
+        version.Length > 16 ? version[..16] + "..." : version;
+
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : value[..max] + "...";
+
+    public void Dispose()
+    {
+        pollTimer?.Dispose();
+    }
+}

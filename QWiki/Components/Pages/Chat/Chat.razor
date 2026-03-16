@@ -1,15 +1,16 @@
-﻿@page "/"
+@page "/"
 @using System.ComponentModel
 @inject IChatClient ChatClient
 @inject NavigationManager Nav
 @inject SemanticSearch Search
+@inject ChatHistoryService ChatHistory
 @implements IDisposable
 
 <PageTitle>QWiki</PageTitle>
 
-<ChatHeader OnNewChat="@ResetConversationAsync" />
+<ChatHeader OnNewChat="@ResetConversationAsync" OnToggleSidebar="@ToggleSidebar" />
 
-<ChatMessageList Messages="@messages" InProgressMessage="@currentResponseMessage">
+<ChatMessageList Messages="@messages" InProgressMessage="@currentResponseMessage" ConversationId="@conversationId" UserId="@userId">
     <NoMessagesContent>
         <div>Welcome to QWiki! Start asking questions about your documentation and I'll help you find the information you need.</div>
     </NoMessagesContent>
@@ -30,10 +31,11 @@
         Use the search tool to find relevant information. When you do this, end your
         reply with citations in the special XML format:
 
-        <citation filename='string' page_number='number' source_url='url'>exact quote here</citation>
+        <citation filename='string' page_number='number' source_url='url' document_title='string'>exact quote here</citation>
 
         Always include the citation in your response if there are results.
         Always include the source_url attribute if it's available in the search results.
+        Always include the document_title attribute if it's available in the search results.
 
         When results have record_type=""VIDEO"", these are from video recording transcripts.
         Mention that the information comes from a video recording and include the timestamp
@@ -50,11 +52,85 @@
     private ChatMessage? currentResponseMessage;
     private ChatInput? chatInput;
     private ChatSuggestions? chatSuggestions;
+    private string conversationId = Guid.NewGuid().ToString();
+    private string? conversationTitle;
+    private string userId = "";
+    private MainLayout? layout;
 
-    protected override void OnInitialized()
+    [CascadingParameter]
+    public MainLayout? Layout { get => layout; set => layout = value; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    [SupplyParameterFromQuery(Name = "cid")]
+    public string? LoadConversationId { get; set; }
+
+    protected override async Task OnInitializedAsync()
     {
+        if (AuthState != null)
+        {
+            var authState = await AuthState;
+            userId = authState.User.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ?? "";
+        }
+
         messages.Add(new(ChatRole.System, SystemPrompt));
         chatOptions.Tools = [AIFunctionFactory.Create(SearchAsync)];
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !string.IsNullOrEmpty(LoadConversationId))
+        {
+            await LoadConversationAsync(LoadConversationId);
+        }
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        var uri = new Uri(e.Location);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var cid = query["cid"];
+
+        if (!string.IsNullOrEmpty(cid) && cid != conversationId)
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadConversationAsync(cid);
+                StateHasChanged();
+            });
+        }
+        else if (string.IsNullOrEmpty(cid) && conversationTitle != null)
+        {
+            // "New chat" navigation — reset if we had a loaded conversation
+            await InvokeAsync(async () =>
+            {
+                await ResetConversationAsync();
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task LoadConversationAsync(string id)
+    {
+        var conversation = await ChatHistory.GetConversationAsync(userId, id);
+        if (conversation == null) return;
+
+        CancelAnyCurrentResponse();
+        messages.Clear();
+        messages.Add(new(ChatRole.System, SystemPrompt));
+
+        foreach (var msg in conversation.Messages)
+        {
+            var role = msg.Role == "User" ? ChatRole.User : ChatRole.Assistant;
+            messages.Add(new ChatMessage(role, msg.Text));
+        }
+
+        conversationId = id;
+        conversationTitle = conversation.Title;
+        chatSuggestions?.Clear();
+        layout?.SetActiveConversation(id);
     }
 
     private async Task AddUserMessageAsync(ChatMessage userMessage)
@@ -65,6 +141,14 @@
         messages.Add(userMessage);
         chatSuggestions?.Clear();
         await chatInput!.FocusAsync();
+
+        // Set conversation title from first user message
+        if (conversationTitle == null)
+        {
+            conversationTitle = userMessage.Text?.Length > 100
+                ? userMessage.Text[..100] + "..."
+                : userMessage.Text ?? "Untitled";
+        }
 
         // Stream and display a new response from the IChatClient
         var responseText = new TextContent("");
@@ -89,6 +173,28 @@
         messages.Add(currentResponseMessage!);
         currentResponseMessage = null;
         chatSuggestions?.Update(messages);
+
+        // Save conversation to history
+        await SaveConversationAsync();
+    }
+
+    private async Task SaveConversationAsync()
+    {
+        var historyMessages = messages
+            .Where(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text))
+            .Select(m => new ChatHistoryMessage
+            {
+                Role = m.Role == ChatRole.User ? "User" : "Assistant",
+                Text = m.Text ?? ""
+            })
+            .ToList();
+
+        if (historyMessages.Count > 0 && conversationTitle != null)
+        {
+            await ChatHistory.SaveConversationAsync(userId, conversationId, conversationTitle, historyMessages);
+            layout?.SetActiveConversation(conversationId);
+            if (layout != null) await layout.RefreshSidebarAsync();
+        }
     }
 
     private void CancelAnyCurrentResponse()
@@ -109,7 +215,15 @@
         messages.Clear();
         messages.Add(new(ChatRole.System, SystemPrompt));
         chatSuggestions?.Clear();
+        conversationId = Guid.NewGuid().ToString();
+        conversationTitle = null;
+        layout?.SetActiveConversation("");
         await chatInput!.FocusAsync();
+    }
+
+    private void ToggleSidebar()
+    {
+        layout?.ToggleSidebar();
     }
 
     // TODO: Needed until https://github.com/dotnet/extensions/issues/6114 is resolved, which will introduce
@@ -143,11 +257,18 @@
             {
                 resultXml += $" source_url=\"{result.SourceUrl}\"";
             }
+            if (!string.IsNullOrEmpty(result.DocumentTitle))
+            {
+                resultXml += $" document_title=\"{result.DocumentTitle}\"";
+            }
             resultXml += $">{text}</result>";
             return resultXml;
         });
     }
 
     public void Dispose()
-        => currentResponseCancellation?.Cancel();
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+        currentResponseCancellation?.Cancel();
+    }
 }

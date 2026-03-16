@@ -269,13 +269,19 @@ public class SharePointIngestionSource : IIngestionSource
         var embeddings = await embeddingGenerator.GenerateAsync(
             allChunks.Select(c => c.Text), cancellationToken: cts.Token);
 
+        var documentTitle = Path.GetFileNameWithoutExtension(info.Name);
+
         return allChunks.Zip(embeddings).Select((pair, _) => new SemanticSearchRecord
         {
             Key = ContentExtractor.SanitizeKey($"sp-{documentId}-p{pair.First.PageNumber}-{pair.First.Index}"),
             FileName = info.Name,
             PageNumber = pair.First.PageNumber,
             RecordType = "PDF",
-            SourceUrl = info.WebUrl,
+            SourceUrl = NormalizeWebUrl(info.WebUrl),
+            SourceType = "SharePoint",
+            DocumentTitle = documentTitle,
+            LastModified = info.LastModifiedDateTime,
+            FolderPath = info.ParentPath,
             Text = pair.First.Text,
             Vector = pair.Second.Vector
         });
@@ -306,13 +312,19 @@ public class SharePointIngestionSource : IIngestionSource
         var embeddings = await embeddingGenerator.GenerateAsync(
             allChunks.Select(c => c.Text), cancellationToken: cts.Token);
 
+        var documentTitle = Path.GetFileNameWithoutExtension(info.Name);
+
         return allChunks.Zip(embeddings).Select((pair, _) => new SemanticSearchRecord
         {
             Key = ContentExtractor.SanitizeKey($"sp-{documentId}-s{pair.First.SlideNumber}-{pair.First.Index}"),
             FileName = info.Name,
             PageNumber = pair.First.SlideNumber,
             RecordType = "PPTX",
-            SourceUrl = info.WebUrl,
+            SourceUrl = NormalizeWebUrl(info.WebUrl),
+            SourceType = "SharePoint",
+            DocumentTitle = documentTitle,
+            LastModified = info.LastModifiedDateTime,
+            FolderPath = info.ParentPath,
             Text = pair.First.Text,
             Vector = pair.Second.Vector
         });
@@ -336,13 +348,19 @@ public class SharePointIngestionSource : IIngestionSource
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
         var embeddings = await embeddingGenerator.GenerateAsync(chunks, cancellationToken: cts.Token);
 
+        var documentTitle = Path.GetFileNameWithoutExtension(info.Name);
+
         return chunks.Zip(embeddings).Select((pair, index) => new SemanticSearchRecord
         {
             Key = ContentExtractor.SanitizeKey($"sp-{documentId}-{index}"),
             FileName = info.Name,
             PageNumber = 1,
             RecordType = "DOCX",
-            SourceUrl = info.WebUrl,
+            SourceUrl = NormalizeWebUrl(info.WebUrl),
+            SourceType = "SharePoint",
+            DocumentTitle = documentTitle,
+            LastModified = info.LastModifiedDateTime,
+            FolderPath = info.ParentPath,
             Text = pair.First,
             Vector = pair.Second.Vector
         });
@@ -360,6 +378,13 @@ public class SharePointIngestionSource : IIngestionSource
         => string.IsNullOrEmpty(parentPath) ? fileName : $"{parentPath}/{fileName}";
 
     // --- Inner types ---
+
+    /// <summary>
+    /// Normalizes a SharePoint WebUrl by replacing encoded backslashes (%5C) with forward slashes.
+    /// Graph API sometimes returns folder separators as backslashes which causes 404s.
+    /// </summary>
+    private static string NormalizeWebUrl(string url)
+        => url.Replace("%5C", "/").Replace("%5c", "/");
 
     private record DriveItemInfo(
         string DriveItemId,

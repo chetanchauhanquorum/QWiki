@@ -1,3 +1,48 @@
+.layout-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 0;
+    overflow: hidden;
+    background: #ffffff;
+    border-right: 1px solid #E5E7EB;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.2s ease;
+    flex-shrink: 0;
+}
+
+    .sidebar.open {
+        width: 260px;
+    }
+
+.main-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+    .main-content main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+@media (max-width: 768px) {
+    .sidebar.open {
+        position: fixed;
+        z-index: 50;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 260px;
+        box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+    }
+}
+
 #blazor-error-ui {
     color-scheme: light only;
     background: lightyellow;

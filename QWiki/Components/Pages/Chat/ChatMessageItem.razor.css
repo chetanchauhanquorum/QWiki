@@ -66,6 +66,50 @@
     font-weight: 600;
 }
 
+.feedback-buttons {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+}
+
+.feedback-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    background: transparent;
+    color: #9CA3AF;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+    .feedback-btn:hover:not(:disabled) {
+        color: #4B5563;
+        border-color: #D1D5DB;
+    }
+
+    .feedback-btn:disabled {
+        cursor: default;
+        opacity: 0.5;
+    }
+
+    .feedback-btn.active-positive {
+        color: #059669;
+        opacity: 1;
+    }
+
+    .feedback-btn.active-negative {
+        color: #DC2626;
+        opacity: 1;
+    }
+
+.feedback-icon {
+    width: 1rem;
+    height: 1rem;
+}
+
 /* Default styling for markdown-formatted assistant messages */
 ::deep ul {
     list-style-type: disc;

@@ -19,14 +19,10 @@
     <PackageReference Include="Microsoft.SemanticKernel.Core" Version="1.73.0" />
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureAISearch" Version="1.73.0-preview" />
     <PackageReference Include="Azure.Data.Tables" Version="12.9.1" />
-    <PackageReference Include="Azure.Storage.Blobs" Version="12.22.2" />
     <PackageReference Include="Azure.Identity" Version="1.13.2" />
     <PackageReference Include="Microsoft.Graph" Version="5.74.0" />
     <PackageReference Include="PdfPig" Version="0.1.9" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
-    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.42.0" />
-    <PackageReference Include="Xabe.FFmpeg" Version="5.2.6" />
-    <PackageReference Include="Xabe.FFmpeg.Downloader" Version="5.2.6" />
   </ItemGroup>
 
 </Project>

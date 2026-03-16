@@ -19,6 +19,18 @@ public class SemanticSearchRecord
     [VectorStoreData]
     public string? SourceUrl { get; set; }
 
+    [VectorStoreData(IsIndexed = true)]
+    public string SourceType { get; set; } = "Unknown";
+
+    [VectorStoreData(IsIndexed = true)]
+    public string DocumentTitle { get; set; } = "";
+
+    [VectorStoreData]
+    public string LastModified { get; set; } = "";
+
+    [VectorStoreData]
+    public string FolderPath { get; set; } = "";
+
     [VectorStoreData(IsFullTextIndexed = true)]
     public required string Text { get; set; }
 

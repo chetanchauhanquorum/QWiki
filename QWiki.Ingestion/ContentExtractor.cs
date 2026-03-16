@@ -12,7 +12,7 @@ namespace QWiki.Ingestion;
 
 /// <summary>
 /// Shared content extraction helpers for PDF, PPTX, DOCX files.
-/// Used by both SharePointIngestionSource and LocalFolderIngestionSource.
+/// Used by SharePointIngestionSource for text extraction and chunking.
 /// </summary>
 public static class ContentExtractor
 {
@@ -114,57 +114,6 @@ public static class ContentExtractor
         }
 
         return chunks;
-    }
-
-    /// <summary>
-    /// Chunks transcript segments into text blocks, preserving [MM:SS] timestamp labels.
-    /// Each chunk is prefixed with the timestamp of its first segment.
-    /// </summary>
-    public static List<(string TimestampLabel, string Text)> ChunkTranscriptWithTimestamps(
-        List<TranscriptSegment> segments, int maxWords = 300, int overlapWords = 50)
-    {
-        if (segments.Count == 0) return [];
-
-        // Build flat word list, tracking which segment each word came from
-        var wordEntries = new List<(int SegmentIndex, string Word)>();
-        for (int i = 0; i < segments.Count; i++)
-        {
-            var words = segments[i].Text.Split([' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries);
-            foreach (var w in words)
-                wordEntries.Add((i, w));
-        }
-
-        if (wordEntries.Count == 0) return [];
-
-        var results = new List<(string TimestampLabel, string Text)>();
-
-        int start = 0;
-        while (start < wordEntries.Count)
-        {
-            int end = Math.Min(start + maxWords, wordEntries.Count);
-
-            // Get the timestamp from the first segment in this chunk
-            var firstSegmentIndex = wordEntries[start].SegmentIndex;
-            var offset = segments[firstSegmentIndex].Offset;
-            var label = FormatTimestamp(offset);
-
-            var chunkWords = wordEntries.Skip(start).Take(end - start).Select(w => w.Word);
-            var chunkText = $"{label} {string.Join(" ", chunkWords)}";
-
-            results.Add((label, chunkText));
-
-            if (end >= wordEntries.Count) break;
-            start = end - overlapWords;
-        }
-
-        return results;
-    }
-
-    private static string FormatTimestamp(TimeSpan ts)
-    {
-        if (ts.TotalHours >= 1)
-            return $"[{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}]";
-        return $"[{(int)ts.TotalMinutes:D2}:{ts.Seconds:D2}]";
     }
 
     public static string SanitizeKey(string key) =>
