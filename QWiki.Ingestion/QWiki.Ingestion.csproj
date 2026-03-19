@@ -23,6 +23,9 @@
     <PackageReference Include="Microsoft.Graph" Version="5.74.0" />
     <PackageReference Include="PdfPig" Version="0.1.9" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
+    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.42.0" />
+    <PackageReference Include="Xabe.FFmpeg" Version="6.0.0" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.23.0" />
   </ItemGroup>
 
 </Project>

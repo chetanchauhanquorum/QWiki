@@ -327,6 +327,99 @@ h2 {
         color: #DC2626;
     }
 
+/* Recent Files Log */
+.recent-files {
+    margin-top: 0.5rem;
+    border-top: 1px solid #E5E7EB;
+    padding-top: 0.5rem;
+}
+
+.recent-files-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #6B7280;
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+}
+
+.recent-file-row {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.125rem 0;
+    font-size: 0.75rem;
+}
+
+.recent-file-icon {
+    font-size: 0.625rem;
+    font-weight: 700;
+    padding: 0.0625rem 0.25rem;
+    border-radius: 0.125rem;
+    flex-shrink: 0;
+}
+
+    .recent-file-icon.success {
+        background: #D1FAE5;
+        color: #065F46;
+    }
+
+    .recent-file-icon.error {
+        background: #FEE2E2;
+        color: #991B1B;
+    }
+
+.recent-file-name {
+    font-family: monospace;
+    font-size: 0.6875rem;
+    color: #6B7280;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Delete Source Button */
+.btn-delete-source {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    background: none;
+    border: none;
+    color: #D1D5DB;
+    cursor: pointer;
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.125rem;
+}
+
+    .btn-delete-source:hover {
+        color: #DC2626;
+        background: #FEE2E2;
+    }
+
+.admin-card {
+    position: relative;
+}
+
+.delete-confirm {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    margin-top: 0.375rem;
+    font-size: 0.6875rem;
+    color: #6B7280;
+}
+
+.btn-danger {
+    color: #DC2626;
+    border-color: #DC2626;
+}
+
+    .btn-danger:hover {
+        background: #FEE2E2;
+    }
+
 .source-badge.wiki {
     background: #DBEAFE;
     color: #1E40AF;

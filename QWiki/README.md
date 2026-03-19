@@ -7,7 +7,7 @@ This is the Blazor Server front-end for QWiki. It provides the chat UI, authenti
 - Authenticates users via Microsoft Entra ID (OpenID Connect)
 - Serves the interactive chat UI (Blazor Server with SSR)
 - Accepts natural language queries from users
-- Searches Azure AI Search using hybrid search (vector embeddings + BM25 full-text)
+- Searches Azure AI Search using hybrid search (vector embeddings + BM25 full-text) with a dual-query strategy that ensures wiki/document results always surface alongside video transcripts
 - Generates AI responses with citations via GPT-4o-mini
 - Provides source links and page numbers for referenced documents
 - Persists per-user chat history and feedback in Azure Table Storage

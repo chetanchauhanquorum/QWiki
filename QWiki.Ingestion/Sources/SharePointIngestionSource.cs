@@ -13,20 +13,22 @@ public class SharePointIngestionSource : IIngestionSource
     private readonly IConfiguration _configuration;
     private readonly ILogger<SharePointIngestionSource> _logger;
     private readonly GraphServiceClient _graphClient;
+    private readonly AudioTranscriber _audioTranscriber;
     private readonly string[] _supportedExtensions;
     private readonly long _maxFileSizeBytes;
 
     private string _siteId = default!;
     private string _driveId = default!;
-    private string _rootFolderId = default!;
+    private List<(string FolderId, string FolderPath)> _rootFolders = new();
 
     // All files discovered in the current run: docId -> DriveItemInfo
     private Dictionary<string, DriveItemInfo>? _discoveredFiles;
 
-    public SharePointIngestionSource(IConfiguration configuration, ILogger<SharePointIngestionSource> logger)
+    public SharePointIngestionSource(IConfiguration configuration, ILogger<SharePointIngestionSource> logger, AudioTranscriber audioTranscriber)
     {
         _configuration = configuration;
         _logger = logger;
+        _audioTranscriber = audioTranscriber;
 
         var tenantId = configuration["SharePointIngestion:TenantId"]
             ?? throw new InvalidOperationException("Missing SharePointIngestion:TenantId");
@@ -67,21 +69,32 @@ public class SharePointIngestionSource : IIngestionSource
             ?? throw new InvalidOperationException($"Document library '{libraryName}' not found on site {_siteId}");
         _driveId = drive.Id!;
 
-        // Resolve root folder item ID (optional — if not set, use drive root)
-        var rootFolder = _configuration["SharePointIngestion:RootFolder"];
-        if (!string.IsNullOrEmpty(rootFolder))
+        // Resolve root folder(s) — supports array (RootFolders) or single string (RootFolder) for backward compat
+        var rootFolders = _configuration.GetSection("SharePointIngestion:RootFolders").Get<string[]>();
+        var singleFolder = _configuration["SharePointIngestion:RootFolder"];
+
+        var foldersToResolve = rootFolders is { Length: > 0 }
+            ? rootFolders
+            : (!string.IsNullOrEmpty(singleFolder) ? new[] { singleFolder } : Array.Empty<string>());
+
+        if (foldersToResolve.Length == 0)
         {
-            var folderItem = await _graphClient.Drives[_driveId].Root.ItemWithPath(rootFolder).GetAsync();
-            _rootFolderId = folderItem?.Id
-                ?? throw new InvalidOperationException($"Root folder '{rootFolder}' not found in drive {_driveId}");
+            _rootFolders.Add(("root", ""));
+            _logger.LogInformation("SharePoint initialized: Site={SiteId}, Drive={DriveId}, RootFolder=drive root",
+                _siteId, _driveId);
         }
         else
         {
-            _rootFolderId = "root";
+            foreach (var folder in foldersToResolve)
+            {
+                var folderItem = await _graphClient.Drives[_driveId].Root.ItemWithPath(folder).GetAsync();
+                var folderId = folderItem?.Id
+                    ?? throw new InvalidOperationException($"Root folder '{folder}' not found in drive {_driveId}");
+                _rootFolders.Add((folderId, folder));
+            }
+            _logger.LogInformation("SharePoint initialized: Site={SiteId}, Drive={DriveId}, RootFolders={Folders}",
+                _siteId, _driveId, string.Join(", ", foldersToResolve));
         }
-
-        _logger.LogInformation("SharePoint initialized: Site={SiteId}, Drive={DriveId}, RootFolder={FolderId}",
-            _siteId, _driveId, _rootFolderId);
     }
 
     // --- IIngestionSource implementation ---
@@ -101,17 +114,9 @@ public class SharePointIngestionSource : IIngestionSource
 
         var results = new List<IngestedDocument>();
         var skippedCount = 0;
-        var videoSkippedCount = 0;
 
         foreach (var (docId, info) in _discoveredFiles!)
         {
-            // Videos are discovered for tracking but skipped for content extraction
-            if (info.Extension is ".mp4" or ".mkv")
-            {
-                videoSkippedCount++;
-                continue;
-            }
-
             existingDocuments.TryGetValue(docId, out var existingDoc);
 
             if (existingDoc is null)
@@ -135,8 +140,8 @@ public class SharePointIngestionSource : IIngestionSource
         }
 
         _logger.LogInformation(
-            "SharePoint scan complete: {Total} files discovered, {Changed} new/modified, {Skipped} unchanged, {Videos} videos skipped (Phase 3c)",
-            _discoveredFiles.Count, results.Count, skippedCount, videoSkippedCount);
+            "SharePoint scan complete: {Total} files discovered, {Changed} new/modified, {Skipped} unchanged",
+            _discoveredFiles.Count, results.Count, skippedCount);
 
         return results;
     }
@@ -157,7 +162,7 @@ public class SharePointIngestionSource : IIngestionSource
                 ".pdf" => await ProcessPdfAsync(embeddingGenerator, documentId, info),
                 ".pptx" => await ProcessPptxAsync(embeddingGenerator, documentId, info),
                 ".docx" => await ProcessDocxAsync(embeddingGenerator, documentId, info),
-                ".mp4" or ".mkv" => LogVideoSkipped(documentId),
+                ".mp4" or ".mkv" => await ProcessVideoAsync(embeddingGenerator, documentId, info),
                 _ => []
             };
         }
@@ -175,8 +180,14 @@ public class SharePointIngestionSource : IIngestionSource
         if (_discoveredFiles != null) return;
 
         _discoveredFiles = new Dictionary<string, DriveItemInfo>();
-        await DiscoverFilesRecursivelyAsync(_rootFolderId, "");
-        _logger.LogInformation("SharePoint discovery complete: {Count} files found", _discoveredFiles.Count);
+        foreach (var (folderId, _) in _rootFolders)
+        {
+            // Always start with empty parentPath so document IDs are relative to the root folder,
+            // preserving backward compatibility with previously ingested document IDs.
+            await DiscoverFilesRecursivelyAsync(folderId, "");
+        }
+        _logger.LogInformation("SharePoint discovery complete: {Count} files found across {FolderCount} root folder(s)",
+            _discoveredFiles.Count, _rootFolders.Count);
     }
 
     private async Task DiscoverFilesRecursivelyAsync(string folderId, string parentPath)
@@ -366,10 +377,66 @@ public class SharePointIngestionSource : IIngestionSource
         });
     }
 
-    private IEnumerable<SemanticSearchRecord> LogVideoSkipped(string documentId)
+    private async Task<IEnumerable<SemanticSearchRecord>> ProcessVideoAsync(
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        string documentId, DriveItemInfo info)
     {
-        _logger.LogInformation("Skipping video {DocId} — no transcript API available (deferred to Phase 3c)", documentId);
-        return [];
+        // Download video to temp file (AudioTranscriber needs a file path)
+        var tempPath = Path.Combine(Path.GetTempPath(), $"qwiki-video-{Guid.NewGuid()}{info.Extension}");
+        try
+        {
+            _logger.LogInformation("Downloading video {DocId} ({Size:F1} MB)...",
+                documentId, info.Size / (1024.0 * 1024.0));
+
+            using (var stream = await DownloadFileAsync(info.DriveItemId))
+            using (var fileStream = File.Create(tempPath))
+            {
+                await stream.CopyToAsync(fileStream);
+            }
+
+            // Transcribe video (with caching keyed on document ID + version)
+            var cacheKey = $"sp-{documentId}";
+            var segments = await _audioTranscriber.TranscribeVideoAsync(tempPath, cacheKey, info.LastModifiedDateTime);
+
+            if (segments.Count == 0)
+            {
+                _logger.LogInformation("No transcript segments for video {DocId}", documentId);
+                return [];
+            }
+
+            // Chunk transcript with timestamp labels
+            var chunks = ContentExtractor.ChunkTranscriptWithTimestamps(segments);
+            if (chunks.Count == 0) return [];
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+            var embeddings = await embeddingGenerator.GenerateAsync(
+                chunks.Select(c => c.Text), cancellationToken: cts.Token);
+
+            var documentTitle = Path.GetFileNameWithoutExtension(info.Name);
+
+            return chunks.Zip(embeddings).Select((pair, index) => new SemanticSearchRecord
+            {
+                Key = ContentExtractor.SanitizeKey($"sp-{documentId}-t{index}"),
+                FileName = info.Name,
+                PageNumber = index + 1,
+                RecordType = "VIDEO",
+                SourceUrl = NormalizeWebUrl(info.WebUrl),
+                SourceType = "SharePoint",
+                DocumentTitle = documentTitle,
+                LastModified = info.LastModifiedDateTime,
+                FolderPath = info.ParentPath,
+                Text = pair.First.Text,
+                Vector = pair.Second.Vector
+            });
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                try { File.Delete(tempPath); }
+                catch { /* best effort cleanup */ }
+            }
+        }
     }
 
     // --- Helpers ---

@@ -66,9 +66,11 @@ All resources in the `qwiki-rg` resource group (East US region):
 | Resource | Type | Purpose | Used By |
 |----------|------|---------|---------|
 | `qwiki-search` | Azure AI Search (Free) | Vector store | UI + Worker |
-| `qwikistorage` | Storage Account | Table Storage (cache, chat history, feedback) | UI + Worker |
-| Container App: UI | Azure Container Apps | Blazor Server UI | - |
-| Container App: Worker | Azure Container Apps | Ingestion Worker | - |
+| `qwikistorage` | Storage Account | Table Storage (cache, chat history, feedback, progress) + Blob Storage (transcript cache) | UI + Worker |
+| `qwiki-speech` | Azure Speech Service (S0) | Video transcription (speech-to-text) | Worker |
+| `qwikiacr` | Azure Container Registry (Basic) | Docker images for Worker | Worker |
+| `qwiki-app` | App Service (B1 Linux) | Blazor Server UI | - |
+| `qwiki-worker` | Container App | Ingestion Worker (scale-to-zero) | - |
 
 ### Creating Resources
 
@@ -81,9 +83,16 @@ az group create --name qwiki-rg --location "East US"
 # Azure AI Search (Free tier)
 az search service create --name qwiki-search --resource-group qwiki-rg --sku free --location "East US"
 
-# Storage Account (Table Storage)
+# Storage Account (Table Storage + Blob Storage)
 az storage account create --name qwikistorage --resource-group qwiki-rg \
   --location eastus --sku Standard_LRS
+
+# Azure Speech Service (for video transcription)
+az cognitiveservices account create --name qwiki-speech --resource-group qwiki-rg \
+  --kind SpeechServices --sku S0 --location eastus --yes
+
+# Container Registry (for Worker Docker images)
+az acr create --name qwikiacr --resource-group qwiki-rg --sku Basic --admin-enabled true
 ```
 
 ## Deployment Options
@@ -126,6 +135,8 @@ az containerapp create \
 
 #### Deploy Worker
 
+> The Worker Dockerfile installs FFmpeg for video audio extraction.
+
 ```bash
 az containerapp create \
   --name qwiki-worker \
@@ -139,6 +150,12 @@ az containerapp create \
     AzureSearch__ApiKey="your-key" \
     AzureDevOps__Pat="your-pat" \
     AzureStorage__ConnectionString="your-connection-string" \
+    AzureSpeech__Key="your-speech-key" \
+    AzureSpeech__Region="eastus" \
+    WikiIngestion__RootPaths__0="Maintenance" \
+    SharePointIngestion__TenantId="your-tenant-id" \
+    SharePointIngestion__ClientId="your-client-id" \
+    SharePointIngestion__ClientSecret="your-client-secret" \
     Ingestion__IntervalMinutes="60" \
     Ingestion__RunOnce="false"
 ```
@@ -233,6 +250,9 @@ dotnet publish QWiki.Ingestion.Worker/QWiki.Ingestion.Worker.csproj -c Release -
 | `SharePointIngestion__TenantId` | For SharePoint | Azure AD tenant ID |
 | `SharePointIngestion__ClientId` | For SharePoint | App registration client ID |
 | `SharePointIngestion__ClientSecret` | For SharePoint | App registration client secret |
+| `AzureSpeech__Key` | For video transcription | Azure Speech API key |
+| `AzureSpeech__Region` | For video transcription | Azure Speech region (e.g., `eastus`) |
+| `WikiIngestion__RootPaths__0` | For wiki | Wiki root path to ingest (e.g., `Maintenance`) |
 
 ## Storage Architecture
 
@@ -240,10 +260,14 @@ QWiki uses two Azure storage services:
 
 1. **Azure AI Search** — Vector store for document embeddings (1536-dimension vectors). Both UI and Worker read/write to the same index (`data-qwiki-ingested`). Supports hybrid search (vector similarity + BM25 full-text).
 
-2. **Azure Table Storage** — Three tables:
+2. **Azure Table Storage** — Four tables:
    - **IngestionCache**: Tracks which documents have been processed and their versions. Enables incremental ingestion: only new/modified documents are re-processed. Used by both Worker and UI (admin page).
    - **ChatHistory**: Per-user conversation history, partitioned by Entra Object ID (`Chat-{userId}`). UI-only.
    - **Feedback**: User feedback (thumbs up/down) with associated queries and responses. UI-only.
+   - **IngestionProgress**: Cross-process progress state, enabling the Admin UI to show live Worker progress.
+
+3. **Azure Blob Storage** — One container:
+   - **transcript-cache**: Cached video transcriptions as JSON files, keyed by document ID + version. Avoids re-transcribing unchanged videos on subsequent ingestion cycles.
 
 ## Monitoring and Troubleshooting
 
@@ -272,8 +296,10 @@ az containerapp logs show --name qwiki-worker --resource-group qwiki-rg --follow
 | Resource | Tier | Monthly Cost |
 |----------|------|-------------|
 | Azure AI Search | Free | $0 |
-| Azure Storage (Table) | Pay-as-you-go | ~$0.01 |
-| Container Apps: UI | Consumption | ~$5-15 |
+| Azure Storage (Table + Blob) | Pay-as-you-go | ~$0.01 |
+| App Service: UI | B1 Linux | ~$13 |
 | Container Apps: Worker | Consumption (scale-to-zero) | ~$1-5 |
+| Container Registry | Basic | ~$5 |
+| Azure Speech Service | S0 (pay-per-use) | ~$1-10 (depends on video hours) |
 | GitHub Models API | Free | $0 |
-| **Total** | | **~$6-20/month** |
+| **Total** | | **~$20-33/month** |

@@ -3,6 +3,8 @@
 @inject AzureTableIngestionCache IngestionCache
 @inject FeedbackService FeedbackService
 @inject IngestionProgressService IngestionProgress
+@inject AzureTableProgressStore ProgressStore
+@inject Azure.Search.Documents.SearchClient SearchClient
 @implements IDisposable
 
 <PageTitle>QWiki Admin</PageTitle>
@@ -77,10 +79,24 @@
                     @if (!string.IsNullOrEmpty(IngestionProgress.CurrentFile))
                     {
                         <div class="progress-current-file" title="@IngestionProgress.CurrentFile">
-                            @TruncateDocId(IngestionProgress.CurrentFile)
+                            Currently processing: @TruncateDocId(IngestionProgress.CurrentFile)
                         </div>
                     }
                 </div>
+
+                @if (IngestionProgress.RecentFiles.Count > 0)
+                {
+                    <div class="recent-files">
+                        <div class="recent-files-label">Recent activity</div>
+                        @foreach (var file in IngestionProgress.RecentFiles.AsEnumerable().Reverse().Take(10))
+                        {
+                            <div class="recent-file-row">
+                                <span class="recent-file-icon @(file.Success ? "success" : "error")">@(file.Success ? "OK" : "ERR")</span>
+                                <span class="recent-file-name" title="@file.FileName">@TruncateDocId(file.FileName)</span>
+                            </div>
+                        }
+                    </div>
+                }
             }
 
             @if (IngestionProgress.SourceResults.Count > 0)
@@ -118,9 +134,22 @@
             @foreach (var group in documentsBySource)
             {
                 <div class="admin-card">
+                    @if (deletingSource != group.Key)
+                    {
+                        <button class="btn-delete-source" title="Delete all @group.Key data"
+                                @onclick="@(() => ConfirmDeleteSource(group.Key))">x</button>
+                    }
                     <div class="admin-card-value">@group.Value.Count</div>
                     <div class="admin-card-label">@group.Key</div>
                     <div class="admin-card-detail">@group.Value.Sum(d => d.RecordKeys.Count) chunks</div>
+                    @if (deletingSource == group.Key)
+                    {
+                        <div class="delete-confirm">
+                            <span>Delete all?</span>
+                            <button class="btn-subtle btn-sm btn-danger" @onclick="@(() => DeleteSourceAsync(group.Key))">Yes</button>
+                            <button class="btn-subtle btn-sm" @onclick="@(() => deletingSource = null)">No</button>
+                        </div>
+                    }
                 </div>
             }
             <div class="admin-card">
@@ -229,6 +258,7 @@
     private int feedbackPositive, feedbackNegative;
     private int totalDocuments, totalChunks;
     private string selectedSource = "";
+    private string? deletingSource;
     private bool loading = true;
     private string? loadError;
     private Timer? pollTimer;
@@ -244,6 +274,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Attach table store for reading remote progress (read-only mode)
+        IngestionProgress.AttachStore(ProgressStore);
+
         try
         {
             allDocuments = await IngestionCache.LoadAllDocumentsAsync();
@@ -264,14 +297,52 @@
 
         loading = false;
 
-        // Poll ingestion progress every 2 seconds
-        pollTimer = new Timer(_ => InvokeAsync(StateHasChanged), null, 0, 2000);
+        // Poll ingestion progress every 2 seconds (reads from Azure Table in production)
+        pollTimer = new Timer(async _ =>
+        {
+            try { await IngestionProgress.LoadFromStoreAsync(); } catch { }
+            await InvokeAsync(StateHasChanged);
+        }, null, 0, 2000);
     }
 
     private async Task MarkForReingestionAsync(IngestedDocument doc)
     {
         await IngestionCache.DeleteDocumentAsync(doc.SourceId, doc.Id);
         reingesting.Add(doc.Id);
+    }
+
+    private void ConfirmDeleteSource(string sourceId)
+    {
+        deletingSource = sourceId;
+    }
+
+    private async Task DeleteSourceAsync(string sourceId)
+    {
+        deletingSource = null;
+        var deletedDocs = await IngestionCache.DeleteSourceAsync(sourceId);
+
+        // Delete associated vectors from search index
+        var allKeys = deletedDocs.SelectMany(d => d.RecordKeys).Where(k => !string.IsNullOrEmpty(k)).ToList();
+        if (allKeys.Count > 0)
+        {
+            try
+            {
+                foreach (var batch in allKeys.Chunk(1000))
+                {
+                    await SearchClient.DeleteDocumentsAsync("Key", batch);
+                }
+            }
+            catch { }
+        }
+
+        // Refresh data
+        allDocuments = await IngestionCache.LoadAllDocumentsAsync();
+        documentsBySource = allDocuments
+            .GroupBy(d => d.SourceId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        totalDocuments = allDocuments.Count;
+        totalChunks = allDocuments.Sum(d => d.RecordKeys.Count);
+        if (!documentsBySource.ContainsKey(selectedSource)) selectedSource = "";
     }
 
     private static string FormatTimeAgo(DateTimeOffset time)

@@ -2,6 +2,7 @@ using Azure;
 using Azure.Search.Documents;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.AI;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
@@ -14,6 +15,22 @@ using OpenAI;
 using System.ClientModel;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Trust forwarded headers from Azure App Service reverse proxy (required for OIDC correlation cookies over HTTPS)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// Fix SameSite cookie issue: Entra ID uses response_mode=form_post (cross-site POST),
+// browsers drop SameSite=Lax cookies on cross-site POSTs, breaking OIDC correlation.
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.MinimumSameSitePolicy = SameSiteMode.None;
+    options.Secure = CookieSecurePolicy.Always;
+});
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
 // You will need to set the endpoint and key to your own values
@@ -68,6 +85,7 @@ builder.Services.AddControllersWithViews().AddMicrosoftIdentityUI();
 
 // Ingestion progress tracking (always registered so admin page can inject it)
 builder.Services.AddSingleton<IngestionProgressService>();
+builder.Services.AddSingleton(new AzureTableProgressStore(storageConnectionString));
 
 // Dev-mode: run ingestion in-process (production uses the separate Worker Service)
 var runIngestionInProcess = builder.Configuration.GetValue<bool>("RunIngestionInProcess");
@@ -86,9 +104,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
+app.UseCookiePolicy();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();

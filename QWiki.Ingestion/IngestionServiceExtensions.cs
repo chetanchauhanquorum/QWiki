@@ -17,17 +17,24 @@ public static class IngestionServiceExtensions
     public static IServiceCollection AddIngestionServices(
         this IServiceCollection services, IConfiguration configuration)
     {
+        var connectionString = configuration["AzureStorage:ConnectionString"]
+            ?? throw new InvalidOperationException(
+                "Missing AzureStorage:ConnectionString. Use 'dotnet user-secrets set AzureStorage:ConnectionString YOUR-CONNECTION-STRING'.");
+
         // Persistent ingestion cache (Azure Table Storage) — skip if already registered (e.g., by QWiki UI Program.cs)
-        services.TryAddSingleton(new AzureTableIngestionCache(
-            configuration["AzureStorage:ConnectionString"]
-                ?? throw new InvalidOperationException(
-                    "Missing AzureStorage:ConnectionString. Use 'dotnet user-secrets set AzureStorage:ConnectionString YOUR-CONNECTION-STRING'.")));
+        services.TryAddSingleton(new AzureTableIngestionCache(connectionString));
+
+        // Progress table store (shared between Worker and UI processes via Azure Table)
+        services.TryAddSingleton(new AzureTableProgressStore(connectionString));
 
         // Ingestion progress tracking (singleton — shared with admin UI)
         services.TryAddSingleton<IngestionProgressService>();
 
         // Data ingestor
         services.AddTransient<DataIngestor>();
+
+        // Audio transcriber for video files
+        services.AddTransient<AudioTranscriber>();
 
         // Ingestion sources
         services.AddTransient<WikiIngestionSource>();
@@ -44,6 +51,13 @@ public static class IngestionServiceExtensions
     {
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("QWiki.Ingestion");
         var progress = services.GetRequiredService<IngestionProgressService>();
+
+        // Attach table store for cross-process progress sharing (write-through mode)
+        var store = services.GetService<AzureTableProgressStore>();
+        if (store != null)
+        {
+            progress.AttachStore(store, enableWriteThrough: true);
+        }
 
         progress.StartIngestion();
 

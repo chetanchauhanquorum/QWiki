@@ -60,6 +60,14 @@ public class DataIngestor(
                 }
 
                 var newRecords = (await source.CreateRecordsForDocumentAsync(embeddingGenerator, modifiedDoc.Id)).ToList();
+
+                if (newRecords.Count == 0)
+                {
+                    logger.LogWarning("Document {File} produced 0 records — skipping cache save so it will be retried", modifiedDoc.Id);
+                    progress.FileCompleted(success: false);
+                    continue;
+                }
+
                 await vectorCollection.UpsertAsync(newRecords);
 
                 modifiedDoc.RecordKeys = newRecords.Select(r => r.Key).ToList();
@@ -69,9 +77,11 @@ public class DataIngestor(
             {
                 logger.LogError(ex, "Error processing {File}", modifiedDoc.Id);
                 errorCount++;
+                progress.FileCompleted(success: false);
+                continue;
             }
 
-            progress.FileCompleted();
+            progress.FileCompleted(success: true);
         }
 
         progress.SourceCompleted(source.SourceId, modifiedList.Count - errorCount, existingDocs.Count, errorCount);

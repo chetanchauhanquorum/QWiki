@@ -26,3 +26,7 @@ README.md
 **/.github
 **/publish
 **/deploy.zip
+**/TestResults
+**/QWiki/wwwroot
+**/*.db
+**/qwiki-logs*

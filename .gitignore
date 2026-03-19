@@ -364,3 +364,9 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
+# Deployment artifacts
+deploy.zip
+worker-deploy.zip
+publish-worker/
+worker-publish/
+

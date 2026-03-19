@@ -8,7 +8,7 @@ QWiki builds upon the concept of creating an intelligent documentation assistant
 
 - **Answer Process-Related Queries**: Help developers find information about internal processes, procedures, and best practices
 - **Reference Documentation**: Provide relevant wiki articles and knowledge base entries as supporting references
-- **Support Multiple Document Types**: Process PDFs, Word documents, PowerPoint presentations, and wiki content
+- **Support Multiple Document Types**: Process PDFs, Word documents, PowerPoint presentations, wiki content, and video recordings (MP4/MKV via speech-to-text transcription)
 - **Enable Knowledge Discovery**: Allow users to explore documentation through natural language queries
 - **Per-User Chat History**: Conversations are persisted and isolated per authenticated user
 - **Admin Dashboard**: Content management page with ingestion progress tracking, document inventory, and feedback overview
@@ -29,18 +29,19 @@ QWiki follows a modern **Retrieval Augmented Generation (RAG)** architecture wit
   (Browser)   | (Blazor)  |      | (Vector Store)    |      | (Ingestion)      |
               +-----+-----+      +-------------------+      +--------+---------+
                     |                                                 |
-              +-----v-----------+                          +---------+---------+
-              | Microsoft Entra |                          |                   |
-              | ID (Auth)       |                    +-----v---+         +-----v----+
-              +-----------------+                    | Azure   |         | SharePoint|
-                    |                                | DevOps  |         | (Graph    |
-              +-----v-----------+                    | Wiki    |         |  API)     |
-              | Azure Table     |                    +---------+         +----------+
-              | Storage         |
+              +-----v-----------+                    +----------------+----------------+
+              | Microsoft Entra |                    |                |                |
+              | ID (Auth)       |              +-----v---+      +----v-----+    +-----v------+
+              +-----------------+              | Azure   |      |SharePoint|    | Azure      |
+                    |                          | DevOps  |      | (Graph   |    | Speech SDK |
+              +-----v-----------+              | Wiki    |      |  API)    |    | (Video     |
+              | Azure Table     |              +---------+      +----------+    |  Transcr.) |
+              | Storage         |                                               +------------+
               | - ChatHistory   |
-              | - Feedback      |
-              | - IngestionCache|
-              +-----------------+
+              | - Feedback      |              +-------------------+
+              | - IngestionCache|              | Azure Blob Storage|
+              | - Progress      |              | - Transcript Cache|
+              +-----------------+              +-------------------+
 ```
 
 ### Key Design Decisions
@@ -55,11 +56,12 @@ QWiki follows a modern **Retrieval Augmented Generation (RAG)** architecture wit
 
 1. **Document Discovery**: Worker discovers documents from Wiki and SharePoint
 2. **Content Extraction**: Text extracted from PDFs (PdfPig), Office docs (OpenXml), and wiki pages (REST API)
-3. **Chunking & Embedding**: Content chunked (~300 words with overlap) and embedded via text-embedding-3-small
-4. **Vector Storage**: Embeddings stored in Azure AI Search with metadata (filename, page number, record type, source URL)
-5. **User Query**: Natural language questions entered through the Blazor chat UI
-6. **Hybrid Search**: Query embedded and matched against Azure AI Search using vector similarity + BM25 full-text search
-7. **Response Generation**: GPT-4o-mini generates responses with citations and source links
+3. **Video Transcription**: For MP4/MKV files, audio is extracted via FFmpeg, transcribed using Azure Speech SDK (continuous recognition), and cached in Azure Blob Storage. Transcripts are chunked with `[HH:MM:SS]` timestamp labels.
+4. **Chunking & Embedding**: Content chunked (~300 words with 50-word overlap) and embedded via text-embedding-3-small
+5. **Vector Storage**: Embeddings stored in Azure AI Search with metadata (filename, page number, record type, source URL)
+6. **User Query**: Natural language questions entered through the Blazor chat UI
+7. **Dual-Query Search**: Two parallel searches run against Azure AI Search — one excluding video transcripts, one including all sources. Results are merged to ensure wiki/document results always appear alongside video results.
+8. **Response Generation**: GPT-4o-mini generates responses with citations and source links
 
 ### Data Sources
 
@@ -67,6 +69,7 @@ QWiki follows a modern **Retrieval Augmented Generation (RAG)** architecture wit
 |--------|---------------|--------|
 | Azure DevOps Wiki | Wiki pages (Markdown) | Active |
 | SharePoint | PDF, PPTX, DOCX | Active |
+| SharePoint | MP4, MKV (video transcription) | Active |
 
 ### Supported File Types
 
@@ -76,6 +79,7 @@ QWiki follows a modern **Retrieval Augmented Generation (RAG)** architecture wit
 | PPTX | OpenXml (slide-by-slide) | PPTX | Slide number citations |
 | DOCX | OpenXml (paragraphs) | DOCX | Text chunk citations |
 | Wiki | Azure DevOps REST API | WIKI | Direct wiki page links |
+| MP4/MKV | Azure Speech SDK (transcription) | VIDEO | Timestamp citations (`[HH:MM:SS]`) |
 
 ## Solution Structure
 
@@ -93,11 +97,12 @@ QWiki.sln
 |   +-- DataIngestor.cs                  Orchestrator: discovery -> extraction -> embedding -> storage
 |   +-- AzureTableIngestionCache.cs      Persistent cache (Azure Table Storage)
 |   +-- ContentExtractor.cs              PDF, PPTX, DOCX text extraction + chunking
-|   +-- IngestionProgressService.cs      Live progress tracking (shared with admin UI)
+|   +-- AudioTranscriber.cs              Video transcription (Azure Speech SDK + FFmpeg + Blob cache)
+|   +-- IngestionProgressService.cs      Live progress tracking (shared with admin UI via Azure Table)
 |   +-- IngestionServiceExtensions.cs    DI registration + RunIngestionAsync helper
 |   +-- Sources/
 |       +-- WikiIngestionSource.cs       Azure DevOps Wiki ingestion
-|       +-- SharePointIngestionSource.cs SharePoint Graph API ingestion
+|       +-- SharePointIngestionSource.cs SharePoint Graph API ingestion (docs + videos)
 |
 +-- QWiki.Ingestion.Worker/             Worker Service (standalone ingestion host)
 |   +-- Program.cs                       Host builder + DI setup
@@ -139,7 +144,11 @@ All resources are in the `qwiki-rg` resource group:
 | Resource | Type | Purpose | Cost |
 |----------|------|---------|------|
 | `qwiki-search` | Azure AI Search | Vector store for semantic search | Free tier |
-| `qwikistorage` | Storage Account | Table Storage (ingestion cache, chat history, feedback) | ~$0.01/month |
+| `qwikistorage` | Storage Account | Table Storage (ingestion cache, chat history, feedback, progress) + Blob Storage (transcript cache) | ~$0.01/month |
+| `qwiki-speech` | Azure Speech Service | Video transcription (speech-to-text) | S0 (pay-per-use) |
+| `qwiki-app` | App Service | Blazor Server UI | B1 |
+| `qwiki-worker` | Container App | Ingestion Worker (scale-to-zero) | Consumption |
+| `qwikiacr` | Container Registry | Docker images for Worker | Basic |
 
 >[!NOTE]
 > Before running this project you need to configure the API keys, endpoints, and Entra ID app registration. See the Configuration section below.
@@ -200,6 +209,7 @@ For dev-mode (with `RunIngestionInProcess: true`), the UI also needs all Worker 
 | `SharePointIngestion:TenantId` | For SharePoint | Azure AD tenant ID |
 | `SharePointIngestion:ClientId` | For SharePoint | Azure AD app registration client ID |
 | `SharePointIngestion:ClientSecret` | For SharePoint | Azure AD app registration client secret |
+| `AzureSpeech:Key` | For video transcription | Azure Speech API key |
 
 ### Setting Secrets
 
@@ -369,16 +379,26 @@ Mathematical representations of text as vectors (arrays of numbers) in high-dime
 Microsoft's cloud search service used as QWiki's vector store. Stores document embeddings and supports hybrid search (vector similarity + BM25 full-text) using cosine similarity.
 
 ### **Azure Table Storage**
-A NoSQL key-value store used for three purposes in QWiki:
+A NoSQL key-value store used for four purposes in QWiki:
 - **IngestionCache**: Tracks which documents have been processed and their versions, enabling incremental ingestion
 - **ChatHistory**: Stores per-user conversation history, partitioned by Entra Object ID
 - **Feedback**: Stores user feedback (thumbs up/down) with associated queries and responses
+- **IngestionProgress**: Cross-process progress state, enabling the Admin UI to display real-time Worker ingestion progress
 
 ### **Document Chunking**
 The process of breaking down large documents into smaller, manageable pieces (~300 words with 50-word overlap) before converting them to embeddings.
 
 ### **Incremental Ingestion**
 QWiki tracks document versions (content hash for wiki pages, modification time for SharePoint files) in Azure Table Storage. On restart, only new or modified documents are re-processed.
+
+### **Video Transcription**
+For MP4 and MKV files, QWiki extracts audio using FFmpeg (16kHz mono WAV), then transcribes it using Azure Speech SDK's continuous recognition (en-US). Transcripts are cached as JSON in Azure Blob Storage (keyed on document ID + version) so re-ingestion doesn't re-transcribe unchanged videos. The resulting text is chunked with `[HH:MM:SS]` timestamp labels for citation purposes.
+
+### **Transcript Caching**
+Video transcripts are stored in Azure Blob Storage (`transcript-cache` container) as JSON files. Each cache entry is keyed by document ID and includes a version string (e.g., last-modified timestamp). If the cached version matches the current document version, the cached transcript is reused — avoiding expensive re-transcription.
+
+### **Dual-Query Search**
+To prevent video transcripts from dominating search results (video chunks vastly outnumber wiki/doc chunks), QWiki runs two parallel searches: one filtered to exclude videos (`RecordType ne 'VIDEO'`) and one unfiltered. Results are merged — non-video results first, then videos fill remaining slots — ensuring wiki and document content always surfaces.
 
 ### **Worker Service**
 A .NET `BackgroundService` that runs data ingestion independently from the UI. Can be deployed as a separate container with its own scaling rules — scale up for initial bulk loads, scale to zero for maintenance mode.

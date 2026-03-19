@@ -19,7 +19,6 @@
 <div class="chat-container">
     <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
     <ChatInput OnSend="@AddUserMessageAsync" @ref="@chatInput" />
-    <SurveyPrompt /> @* Remove this line to eliminate the template survey message *@
 </div>
 
 @code {
@@ -36,6 +35,11 @@
         Always include the citation in your response if there are results.
         Always include the source_url attribute if it's available in the search results.
         Always include the document_title attribute if it's available in the search results.
+
+        When multiple results cover the same topic, prefer wiki pages and documents
+        over video recording transcripts, as wiki pages are typically more authoritative
+        and up-to-date. Use video transcript results to supplement or when no
+        wiki/document results are available on the topic.
 
         When results have record_type=""VIDEO"", these are from video recording transcripts.
         Mention that the information comes from a video recording and include the timestamp
@@ -248,7 +252,7 @@
         [Description("Whenever possible, specify the filename to search that file only. If not provided, the search includes all files.")] string? filenameFilter = null)
     {
         await InvokeAsync(StateHasChanged);
-        var results = await Search.SearchAsync(searchPhrase, filenameFilter, maxResults: 3);
+        var results = await Search.SearchAsync(searchPhrase, filenameFilter, maxResults: 5);
         return results.Select(result =>
         {
             var text = result.Text.Length > 500 ? result.Text[..500] + "..." : result.Text;

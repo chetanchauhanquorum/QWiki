@@ -113,6 +113,24 @@ public class AzureTableIngestionCache
         }
     }
 
+    /// <summary>
+    /// Deletes all document records for a given source. Returns the deleted documents
+    /// so callers can also clean up associated search index vectors.
+    /// </summary>
+    public async Task<List<IngestedDocument>> DeleteSourceAsync(string sourceId)
+    {
+        var docs = await LoadDocumentsAsync(sourceId);
+        foreach (var doc in docs.Values)
+        {
+            try
+            {
+                await _tableClient.DeleteEntityAsync(sourceId, SanitizeRowKey(doc.Id));
+            }
+            catch (Azure.RequestFailedException ex) when (ex.Status == 404) { }
+        }
+        return docs.Values.ToList();
+    }
+
     // Azure Table RowKey disallows: / \ # ?
     private static string SanitizeRowKey(string key)
         => key.Replace("/", "||").Replace("\\", "||").Replace("#", "--").Replace("?", "--");
