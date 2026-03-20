@@ -269,6 +269,63 @@ QWiki uses two Azure storage services:
 3. **Azure Blob Storage** — One container:
    - **transcript-cache**: Cached video transcriptions as JSON files, keyed by document ID + version. Avoids re-transcribing unchanged videos on subsequent ingestion cycles.
 
+## CI/CD with GitHub Actions
+
+Both services have automated deployment workflows that trigger on push to `master` or via manual dispatch.
+
+### UI Workflow (`.github/workflows/azure-deploy.yml`)
+
+Deploys the Blazor Server app to Azure App Service:
+
+1. Restores, builds, and publishes the QWiki project
+2. Deploys to App Service using a publish profile
+
+**Required GitHub secret:**
+- `AZURE_WEBAPP_PUBLISH_PROFILE` — Download from Azure Portal → `qwiki-app` → Overview → "Download publish profile". Paste the full XML as the secret value.
+
+### Worker Workflow (`.github/workflows/azure-deploy-worker.yml`)
+
+Builds a Docker image and deploys to Azure Container Apps:
+
+1. Logs into Azure using a service principal
+2. Builds the Docker image remotely on ACR (`az acr build`) — tags with commit SHA for traceability
+3. Updates the Container App to use the new image
+
+**Required GitHub secret:**
+- `AZURE_CREDENTIALS` — A JSON service principal credential (see setup below)
+
+### One-Time Setup: Create Service Principal
+
+Run this once to create the credentials for the Worker workflow:
+
+```bash
+# Get your subscription ID
+az account show --query id -o tsv
+
+# Create service principal with Contributor role on qwiki-rg
+az ad sp create-for-rbac \
+  --name "qwiki-github-actions" \
+  --role contributor \
+  --scopes /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/qwiki-rg \
+  --sdk-auth
+```
+
+Copy the entire JSON output and save it as GitHub secret `AZURE_CREDENTIALS`:
+- GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+- Name: `AZURE_CREDENTIALS`
+- Value: the full JSON output
+
+### Manual Trigger
+
+Both workflows support `workflow_dispatch` — you can trigger them manually from the GitHub Actions tab without pushing a commit. Useful for redeployments or rollbacks.
+
+### Summary
+
+| Workflow | Service | Target | Auth Secret |
+|----------|---------|--------|-------------|
+| `azure-deploy.yml` | UI (Blazor) | App Service | `AZURE_WEBAPP_PUBLISH_PROFILE` |
+| `azure-deploy-worker.yml` | Worker (Ingestion) | Container Apps via ACR | `AZURE_CREDENTIALS` |
+
 ## Monitoring and Troubleshooting
 
 ### Logs
