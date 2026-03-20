@@ -59,7 +59,7 @@ public class DataIngestor(
                     await vectorCollection.DeleteAsync(modifiedDoc.RecordKeys);
                 }
 
-                var newRecords = (await source.CreateRecordsForDocumentAsync(embeddingGenerator, modifiedDoc.Id)).ToList();
+                var newRecords = await CreateRecordsWithRetryAsync(source, modifiedDoc.Id);
 
                 if (newRecords.Count == 0)
                 {
@@ -87,4 +87,30 @@ public class DataIngestor(
         progress.SourceCompleted(source.SourceId, modifiedList.Count - errorCount, existingDocs.Count, errorCount);
         logger.LogInformation("Ingestion is up-to-date for source {SourceId}", source.SourceId);
     }
+
+    private async Task<List<SemanticSearchRecord>> CreateRecordsWithRetryAsync(
+        IIngestionSource source, string documentId, int maxRetries = 3)
+    {
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                var records = (await source.CreateRecordsForDocumentAsync(embeddingGenerator, documentId)).ToList();
+                return records;
+            }
+            catch (Exception ex) when (attempt < maxRetries && IsTransientError(ex))
+            {
+                var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt + 1)); // 2s, 4s, 8s
+                logger.LogWarning("Transient error on attempt {Attempt}/{Max} for {File}, retrying in {Delay}s: {Error}",
+                    attempt + 1, maxRetries + 1, documentId, delay.TotalSeconds, ex.Message);
+                await Task.Delay(delay);
+            }
+        }
+
+        return []; // unreachable, last attempt throws
+    }
+
+    private static bool IsTransientError(Exception ex) =>
+        ex is TaskCanceledException or OperationCanceledException or HttpRequestException ||
+        (ex.InnerException is TaskCanceledException or OperationCanceledException or HttpRequestException);
 }

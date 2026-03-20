@@ -135,7 +135,7 @@ public class WikiIngestionSource : IIngestionSource
         var documentTitle = ExtractTitleFromMarkdown(content) ?? documentId.Split('/').LastOrDefault() ?? documentId;
         var folderPath = documentId.Contains('/') ? documentId[..documentId.LastIndexOf('/')] : "";
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
         var embeddings = await embeddingGenerator.GenerateAsync(chunks, cancellationToken: cts.Token);
 
         return chunks.Zip(embeddings).Select((pair, index) => new SemanticSearchRecord
