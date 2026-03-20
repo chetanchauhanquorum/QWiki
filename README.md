@@ -17,31 +17,29 @@ QWiki builds upon the concept of creating an intelligent documentation assistant
 
 QWiki follows a modern **Retrieval Augmented Generation (RAG)** architecture with decoupled ingestion and UI layers:
 
-```
-                                 +-------------------+
-                                 |  GitHub Models API |
-                                 |  (GPT-4o-mini +   |
-                                 |   embeddings)      |
-                                 +--------+----------+
-                                          |
-              +-----------+      +--------v----------+      +------------------+
-  User ------>| QWiki UI  |----->| Azure AI Search   |<-----| QWiki Worker     |
-  (Browser)   | (Blazor)  |      | (Vector Store)    |      | (Ingestion)      |
-              +-----+-----+      +-------------------+      +--------+---------+
-                    |                                                 |
-              +-----v-----------+                    +----------------+----------------+
-              | Microsoft Entra |                    |                |                |
-              | ID (Auth)       |              +-----v---+      +----v-----+    +-----v------+
-              +-----------------+              | Azure   |      |SharePoint|    | Azure      |
-                    |                          | DevOps  |      | (Graph   |    | Speech SDK |
-              +-----v-----------+              | Wiki    |      |  API)    |    | (Video     |
-              | Azure Table     |              +---------+      +----------+    |  Transcr.) |
-              | Storage         |                                               +------------+
-              | - ChatHistory   |
-              | - Feedback      |              +-------------------+
-              | - IngestionCache|              | Azure Blob Storage|
-              | - Progress      |              | - Transcript Cache|
-              +-----------------+              +-------------------+
+```mermaid
+graph TD
+    User["👤 User (Browser)"] --> UI["🖥️ QWiki UI<br/><i>Blazor Server</i>"]
+    UI --> Search["🔍 Azure AI Search<br/><i>Vector Store</i>"]
+    Worker["⚙️ QWiki Worker<br/><i>Ingestion Service</i>"] --> Search
+
+    UI --> Auth["🔐 Microsoft Entra ID<br/><i>OIDC Authentication</i>"]
+    UI --> TableUI["📦 Azure Table Storage<br/><i>ChatHistory · Feedback · Progress</i>"]
+
+    GitHub["🤖 GitHub Models API<br/><i>GPT-4o-mini + Embeddings</i>"] --> UI
+    GitHub --> Worker
+
+    Worker --> Wiki["📖 Azure DevOps Wiki"]
+    Worker --> SP["📁 SharePoint<br/><i>Graph API</i>"]
+    Worker --> Speech["🎙️ Azure Speech SDK<br/><i>Video Transcription</i>"]
+    Worker --> Blob["☁️ Azure Blob Storage<br/><i>Transcript Cache</i>"]
+    Worker --> TableW["📦 Azure Table Storage<br/><i>IngestionCache · Progress</i>"]
+
+    style UI fill:#4a9eff,color:#fff
+    style Worker fill:#ff6b6b,color:#fff
+    style Search fill:#51cf66,color:#fff
+    style GitHub fill:#9b59b6,color:#fff
+    style Auth fill:#f39c12,color:#fff
 ```
 
 ### Key Design Decisions
@@ -124,17 +122,23 @@ QWiki.sln
 
 ### Project Dependencies
 
-```
-QWiki.Shared            (no dependencies)
-    ^
-    |
-QWiki.Ingestion         (references: QWiki.Shared)
-    ^           ^
-    |           |
-QWiki           QWiki.Ingestion.Worker
-(references:    (references: QWiki.Ingestion, QWiki.Shared)
- QWiki.Shared,
- QWiki.Ingestion)
+```mermaid
+graph BT
+    Shared["QWiki.Shared<br/><i>Models & Services</i>"]
+    Ingestion["QWiki.Ingestion<br/><i>Ingestion Logic</i>"]
+    UI["QWiki<br/><i>Blazor Server UI</i>"]
+    Worker["QWiki.Ingestion.Worker<br/><i>Background Service</i>"]
+
+    Ingestion --> Shared
+    UI --> Shared
+    UI --> Ingestion
+    Worker --> Shared
+    Worker --> Ingestion
+
+    style Shared fill:#51cf66,color:#fff
+    style Ingestion fill:#f39c12,color:#fff
+    style UI fill:#4a9eff,color:#fff
+    style Worker fill:#ff6b6b,color:#fff
 ```
 
 ## Azure Resources
@@ -333,11 +337,37 @@ The admin page at `/admin` provides:
 
 ## Deployment
 
+### CI/CD with GitHub Actions
+
+Both services deploy automatically on every push to `master`:
+
+```mermaid
+graph LR
+    Push["📝 Push to master"] --> UIWorkflow["azure-deploy.yml"]
+    Push --> WorkerWorkflow["azure-deploy-worker.yml"]
+
+    UIWorkflow -->|"dotnet publish"| AppService["🖥️ App Service<br/><i>QWiki UI</i>"]
+    WorkerWorkflow -->|"az acr build"| ACR["📦 ACR"]
+    ACR -->|"az containerapp update"| ContainerApp["⚙️ Container App<br/><i>QWiki Worker</i>"]
+
+    style Push fill:#9b59b6,color:#fff
+    style AppService fill:#4a9eff,color:#fff
+    style ContainerApp fill:#ff6b6b,color:#fff
+    style ACR fill:#f39c12,color:#fff
+```
+
+| Workflow | Service | Target | Trigger |
+|----------|---------|--------|---------|
+| `azure-deploy.yml` | UI (Blazor) | App Service | Push to `master` or manual |
+| `azure-deploy-worker.yml` | Worker (Ingestion) | Container Apps via ACR | Push to `master` or manual |
+
+For full CI/CD setup instructions (GitHub secrets, service principal), see [AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md#cicd-with-github-actions).
+
 ### Azure Deployment
 
 For detailed instructions on deploying QWiki to Azure, see [AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md).
 
-### Container Deployment
+### Container Deployment (Manual)
 
 Build and run the UI:
 ```bash
@@ -361,6 +391,8 @@ docker run \
   -e AzureSearch__ApiKey="your-key" \
   -e AzureDevOps__Pat="your-pat" \
   -e AzureStorage__ConnectionString="your-connection-string" \
+  -e AzureSpeech__Key="your-speech-key" \
+  -e AzureSpeech__Region="eastus" \
   qwiki-worker
 ```
 

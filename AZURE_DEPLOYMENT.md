@@ -7,37 +7,40 @@ This guide covers deploying the QWiki solution to Azure. QWiki consists of two i
 
 ## Architecture: Production Deployment
 
-```
-                    Internet
-                       |
-              +--------v---------+
-              | Azure Container  |
-              | Apps: QWiki UI   |
-              | (scales on HTTP) |
-              +--------+---------+
-                       |
-         +-------------+-------------+
-         |                           |
-+--------v---------+       +--------v---------+
-| Azure AI Search  |       | Azure Table      |
-| (Vector Store)   |       | Storage          |
-+--------+---------+       | - IngestionCache |
-         ^                 | - ChatHistory    |
-+--------+---------+       | - Feedback       |
-| Azure Container  |       +--------+---------+
-| Apps: Worker     |                ^
-| (scale-to-zero)  |                |
-+--+-----------+---+----------------+
-   |           |
-+--v---+  +---v----+
-|Wiki  |  |Share-  |
-|API   |  |Point   |
-+------+  +--------+
+```mermaid
+graph TD
+    Internet["🌐 Internet"] --> AppService["🖥️ App Service: QWiki UI<br/><i>Blazor Server · B1 Linux</i>"]
+
+    AppService --> Search["🔍 Azure AI Search<br/><i>Vector Store</i>"]
+    AppService --> Table["📦 Azure Table Storage<br/><i>ChatHistory · Feedback<br/>IngestionCache · Progress</i>"]
+    AppService --> Auth["🔐 Entra ID"]
+
+    Worker["⚙️ Container App: Worker<br/><i>Scale-to-zero · Hourly</i>"] --> Search
+    Worker --> Table
+    Worker --> Wiki["📖 Wiki API"]
+    Worker --> SP["📁 SharePoint"]
+    Worker --> Speech["🎙️ Azure Speech"]
+    Worker --> Blob["☁️ Blob Storage<br/><i>Transcript Cache</i>"]
+
+    subgraph "CI/CD (GitHub Actions)"
+        Push["📝 Push to master"] --> UIAction["azure-deploy.yml"]
+        Push --> WorkerAction["azure-deploy-worker.yml"]
+    end
+
+    UIAction -->|"publish profile"| AppService
+    WorkerAction -->|"az acr build"| ACR["📦 ACR"]
+    ACR -->|"update image"| Worker
+
+    style AppService fill:#4a9eff,color:#fff
+    style Worker fill:#ff6b6b,color:#fff
+    style Search fill:#51cf66,color:#fff
+    style Push fill:#9b59b6,color:#fff
 ```
 
-- **UI**: Scales based on HTTP traffic. Minimum 1 replica. Requires Entra ID authentication.
-- **Worker**: Runs on a schedule (e.g., hourly). Scales to zero between runs. Scale up temporarily for initial bulk loads.
-- **Shared state**: Azure AI Search (vectors) and Azure Table Storage (ingestion cache) are accessed by both services independently. Chat history and feedback tables are UI-only.
+- **UI**: Deployed to App Service (B1 Linux). Scales based on App Service plan. Requires Entra ID authentication.
+- **Worker**: Runs on a Container App schedule (hourly). Scales to zero between runs. Scale up temporarily for initial bulk loads.
+- **CI/CD**: Both services deploy automatically on push to `master` via GitHub Actions.
+- **Shared state**: Azure AI Search (vectors) and Azure Table Storage (ingestion cache, progress) are accessed by both services independently. Chat history and feedback tables are UI-only.
 
 ## Prerequisites
 
@@ -287,12 +290,18 @@ Deploys the Blazor Server app to Azure App Service:
 
 Builds a Docker image and deploys to Azure Container Apps:
 
-1. Logs into Azure using a service principal
+1. Logs into Azure using a service principal (4 secrets composed into a `creds` JSON)
 2. Builds the Docker image remotely on ACR (`az acr build`) — tags with commit SHA for traceability
 3. Updates the Container App to use the new image
 
-**Required GitHub secret:**
-- `AZURE_CREDENTIALS` — A JSON service principal credential (see setup below)
+**Required GitHub secrets:**
+
+| Secret | Value |
+|--------|-------|
+| `AZURE_CLIENT_ID` | Service principal client/app ID |
+| `AZURE_TENANT_ID` | Azure AD tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
+| `AZURE_CLIENT_SECRET` | Service principal client secret |
 
 ### One-Time Setup: Create Service Principal
 
@@ -310,10 +319,12 @@ az ad sp create-for-rbac \
   --sdk-auth
 ```
 
-Copy the entire JSON output and save it as GitHub secret `AZURE_CREDENTIALS`:
+From the JSON output, save these 4 values as individual GitHub secrets:
 - GitHub repo → Settings → Secrets and variables → Actions → New repository secret
-- Name: `AZURE_CREDENTIALS`
-- Value: the full JSON output
+- `AZURE_CLIENT_ID` ← `clientId` from JSON
+- `AZURE_CLIENT_SECRET` ← `clientSecret` from JSON
+- `AZURE_TENANT_ID` ← `tenantId` from JSON
+- `AZURE_SUBSCRIPTION_ID` ← `subscriptionId` from JSON
 
 ### Manual Trigger
 
@@ -321,10 +332,10 @@ Both workflows support `workflow_dispatch` — you can trigger them manually fro
 
 ### Summary
 
-| Workflow | Service | Target | Auth Secret |
-|----------|---------|--------|-------------|
+| Workflow | Service | Target | Auth Secrets |
+|----------|---------|--------|--------------|
 | `azure-deploy.yml` | UI (Blazor) | App Service | `AZURE_WEBAPP_PUBLISH_PROFILE` |
-| `azure-deploy-worker.yml` | Worker (Ingestion) | Container Apps via ACR | `AZURE_CREDENTIALS` |
+| `azure-deploy-worker.yml` | Worker (Ingestion) | Container Apps via ACR | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_SECRET` |
 
 ## Monitoring and Troubleshooting
 
