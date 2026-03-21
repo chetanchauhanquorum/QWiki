@@ -1,24 +1,23 @@
 using Azure;
+using Azure.AI.OpenAI;
 using Microsoft.Extensions.AI;
 using Microsoft.SemanticKernel;
-using OpenAI;
 using QWiki.Ingestion;
 using QWiki.Ingestion.Worker;
 using QWiki.Shared;
-using System.ClientModel;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Embedding generator — same model as the UI to ensure vector compatibility
-var credential = new ApiKeyCredential(
-    builder.Configuration["GitHubModels:Token"]
-        ?? throw new InvalidOperationException("Missing GitHubModels:Token. Use 'dotnet user-secrets set GitHubModels:Token YOUR-TOKEN'."));
-var openAIOptions = new OpenAIClientOptions
-{
-    Endpoint = new Uri(EmbeddingConfig.GitHubModelsEndpoint)
-};
-var ghModelsClient = new OpenAIClient(credential, openAIOptions);
-var embeddingGenerator = ghModelsClient.GetEmbeddingClient(EmbeddingConfig.ModelName).AsIEmbeddingGenerator();
+// Embedding generator — Azure OpenAI for high-throughput ingestion (1000 RPM, 1M TPM)
+// Uses the same model (text-embedding-3-small) as the UI to ensure vector compatibility
+var aoaiEndpoint = new Uri(
+    builder.Configuration["AzureOpenAI:Endpoint"]
+        ?? throw new InvalidOperationException("Missing AzureOpenAI:Endpoint."));
+var aoaiKey = new AzureKeyCredential(
+    builder.Configuration["AzureOpenAI:ApiKey"]
+        ?? throw new InvalidOperationException("Missing AzureOpenAI:ApiKey."));
+var aoaiClient = new AzureOpenAIClient(aoaiEndpoint, aoaiKey);
+var embeddingGenerator = aoaiClient.GetEmbeddingClient(EmbeddingConfig.ModelName).AsIEmbeddingGenerator();
 
 builder.Services.AddEmbeddingGenerator(embeddingGenerator);
 
