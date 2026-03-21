@@ -70,6 +70,7 @@ All resources in the `qwiki-rg` resource group (East US region):
 |----------|------|---------|---------|
 | `qwiki-search` | Azure AI Search (Free) | Vector store | UI + Worker |
 | `qwikistorage` | Storage Account | Table Storage (cache, chat history, feedback, progress) + Blob Storage (transcript cache) | UI + Worker |
+| `qwiki-openai` | Azure OpenAI (S0) | Embeddings (text-embedding-3-small, 1000 RPM) | Worker |
 | `qwiki-speech` | Azure Speech Service (S0) | Video transcription (speech-to-text) | Worker |
 | `qwikiacr` | Azure Container Registry (Basic) | Docker images for Worker | Worker |
 | `qwiki-app` | App Service (B1 Linux) | Blazor Server UI | - |
@@ -93,6 +94,15 @@ az storage account create --name qwikistorage --resource-group qwiki-rg \
 # Azure Speech Service (for video transcription)
 az cognitiveservices account create --name qwiki-speech --resource-group qwiki-rg \
   --kind SpeechServices --sku S0 --location eastus --yes
+
+# Azure OpenAI (for Worker embeddings — high throughput)
+az cognitiveservices account create --name qwiki-openai --resource-group qwiki-rg \
+  --kind OpenAI --sku S0 --location eastus
+az cognitiveservices account update --name qwiki-openai --resource-group qwiki-rg \
+  --custom-domain qwiki-openai
+az cognitiveservices account deployment create --name qwiki-openai --resource-group qwiki-rg \
+  --deployment-name text-embedding-3-small --model-name text-embedding-3-small \
+  --model-version "1" --model-format OpenAI --sku-capacity 1000 --sku-name GlobalStandard
 
 # Container Registry (for Worker Docker images)
 az acr create --name qwikiacr --resource-group qwiki-rg --sku Basic --admin-enabled true
@@ -243,7 +253,8 @@ dotnet publish QWiki.Ingestion.Worker/QWiki.Ingestion.Worker.csproj -c Release -
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `GitHubModels__Token` | Yes | GitHub PAT for embeddings |
+| `AzureOpenAI__Endpoint` | Yes | Azure OpenAI endpoint (e.g., `https://qwiki-openai.openai.azure.com/`) |
+| `AzureOpenAI__ApiKey` | Yes | Azure OpenAI API key |
 | `AzureSearch__Endpoint` | Yes | Azure AI Search endpoint URL |
 | `AzureSearch__ApiKey` | Yes | Azure AI Search admin key |
 | `AzureDevOps__Pat` | Yes | Azure DevOps PAT (Wiki: Read) |
@@ -369,5 +380,6 @@ az containerapp logs show --name qwiki-worker --resource-group qwiki-rg --follow
 | Container Apps: Worker | Consumption (scale-to-zero) | ~$1-5 |
 | Container Registry | Basic | ~$5 |
 | Azure Speech Service | S0 (pay-per-use) | ~$1-10 (depends on video hours) |
-| GitHub Models API | Free | $0 |
-| **Total** | | **~$20-33/month** |
+| Azure OpenAI (Embeddings) | S0 (pay-per-use) | ~$0-1 ($0.02/M tokens) |
+| GitHub Models API (Chat) | Free | $0 |
+| **Total** | | **~$20-34/month** |

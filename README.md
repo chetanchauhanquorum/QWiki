@@ -149,6 +149,7 @@ All resources are in the `qwiki-rg` resource group:
 |----------|------|---------|------|
 | `qwiki-search` | Azure AI Search | Vector store for semantic search | Free tier |
 | `qwikistorage` | Storage Account | Table Storage (ingestion cache, chat history, feedback, progress) + Blob Storage (transcript cache) | ~$0.01/month |
+| `qwiki-openai` | Azure OpenAI | Worker embeddings (text-embedding-3-small, 1000 RPM) | S0 (pay-per-use, ~$0.02/M tokens) |
 | `qwiki-speech` | Azure Speech Service | Video transcription (speech-to-text) | S0 (pay-per-use) |
 | `qwiki-app` | App Service | Blazor Server UI | B1 |
 | `qwiki-worker` | Container App | Ingestion Worker (scale-to-zero) | Consumption |
@@ -206,7 +207,8 @@ For dev-mode (with `RunIngestionInProcess: true`), the UI also needs all Worker 
 
 | Secret | Required | Purpose |
 |--------|----------|---------|
-| `GitHubModels:Token` | Yes | GitHub PAT for embeddings (text-embedding-3-small) |
+| `AzureOpenAI:Endpoint` | Yes | Azure OpenAI endpoint for embeddings |
+| `AzureOpenAI:ApiKey` | Yes | Azure OpenAI API key |
 | `AzureSearch:ApiKey` | Yes | Azure AI Search admin key |
 | `AzureDevOps:Pat` | Yes | Azure DevOps PAT for wiki ingestion (Wiki: Read scope) |
 | `AzureStorage:ConnectionString` | Yes | Storage connection string (ingestion cache) |
@@ -230,7 +232,8 @@ dotnet user-secrets set "AzureDevOps:Pat" "your-devops-pat"
 
 # QWiki Worker
 cd ../QWiki.Ingestion.Worker
-dotnet user-secrets set "GitHubModels:Token" "your-github-pat"
+dotnet user-secrets set "AzureOpenAI:Endpoint" "https://qwiki-openai.openai.azure.com/"
+dotnet user-secrets set "AzureOpenAI:ApiKey" "your-azure-openai-key"
 dotnet user-secrets set "AzureSearch:ApiKey" "your-search-admin-key"
 dotnet user-secrets set "AzureDevOps:Pat" "your-devops-pat"
 dotnet user-secrets set "AzureStorage:ConnectionString" "your-connection-string"
