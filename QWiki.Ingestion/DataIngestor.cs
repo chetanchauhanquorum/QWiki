@@ -1,3 +1,4 @@
+using System.ClientModel;
 using Azure;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -47,8 +48,20 @@ public class DataIngestor(
         progress.SetProcessing(source.SourceId, modifiedList.Count);
 
         int errorCount = 0;
+        int consecutiveErrors = 0;
+        const int maxConsecutiveErrors = 5;
+
         foreach (var modifiedDoc in modifiedList)
         {
+            // Circuit breaker: if 5+ files fail in a row, assume the API is down
+            if (consecutiveErrors >= maxConsecutiveErrors)
+            {
+                logger.LogError("Circuit breaker tripped: {Count} consecutive failures. " +
+                    "Aborting source {Source} — remaining files will be retried next run.",
+                    consecutiveErrors, source.SourceId);
+                break;
+            }
+
             progress.FileStarted(modifiedDoc.Id);
             logger.LogInformation("Processing {File}", modifiedDoc.Id);
 
@@ -64,6 +77,8 @@ public class DataIngestor(
                 if (newRecords.Count == 0)
                 {
                     logger.LogWarning("Document {File} produced 0 records — skipping cache save so it will be retried", modifiedDoc.Id);
+                    consecutiveErrors++;
+                    errorCount++;
                     progress.FileCompleted(success: false);
                     continue;
                 }
@@ -76,11 +91,13 @@ public class DataIngestor(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error processing {File}", modifiedDoc.Id);
+                consecutiveErrors++;
                 errorCount++;
                 progress.FileCompleted(success: false);
                 continue;
             }
 
+            consecutiveErrors = 0;
             progress.FileCompleted(success: true);
         }
 
@@ -100,9 +117,15 @@ public class DataIngestor(
             }
             catch (Exception ex) when (attempt < maxRetries && IsTransientError(ex))
             {
-                var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt + 1)); // 2s, 4s, 8s
-                logger.LogWarning("Transient error on attempt {Attempt}/{Max} for {File}, retrying in {Delay}s: {Error}",
-                    attempt + 1, maxRetries + 1, documentId, delay.TotalSeconds, ex.Message);
+                var retryAfter = GetRetryAfterDelay(ex);
+                var baseDelay = TimeSpan.FromSeconds(Math.Pow(2, attempt + 2)); // 4s, 8s, 16s
+                var delay = retryAfter > baseDelay ? retryAfter : baseDelay;
+
+                logger.LogWarning("Transient error on attempt {Attempt}/{Max} for {File}, " +
+                    "retrying in {Delay}s{RetryAfterNote}: {Error}",
+                    attempt + 1, maxRetries + 1, documentId, delay.TotalSeconds,
+                    retryAfter > TimeSpan.Zero ? $" (Retry-After: {retryAfter.TotalSeconds}s)" : "",
+                    ex.Message);
                 await Task.Delay(delay);
             }
         }
@@ -110,7 +133,31 @@ public class DataIngestor(
         return []; // unreachable, last attempt throws
     }
 
-    private static bool IsTransientError(Exception ex) =>
-        ex is TaskCanceledException or OperationCanceledException or HttpRequestException ||
-        (ex.InnerException is TaskCanceledException or OperationCanceledException or HttpRequestException);
+    private static TimeSpan GetRetryAfterDelay(Exception ex)
+    {
+        var clientEx = ex as ClientResultException ?? ex.InnerException as ClientResultException;
+        if (clientEx is null) return TimeSpan.Zero;
+
+        var response = clientEx.GetRawResponse();
+        if (response is not null && response.Headers.TryGetValue("Retry-After", out string? retryAfterValue)
+            && int.TryParse(retryAfterValue, out int seconds))
+        {
+            return TimeSpan.FromSeconds(seconds);
+        }
+
+        return TimeSpan.Zero;
+    }
+
+    private static bool IsTransientError(Exception ex)
+    {
+        if (ex is TaskCanceledException or OperationCanceledException or HttpRequestException)
+            return true;
+        if (ex.InnerException is TaskCanceledException or OperationCanceledException or HttpRequestException)
+            return true;
+        if (ex is ClientResultException cre && (cre.Status == 429 || cre.Status == 503))
+            return true;
+        if (ex.InnerException is ClientResultException icre && (icre.Status == 429 || icre.Status == 503))
+            return true;
+        return false;
+    }
 }
