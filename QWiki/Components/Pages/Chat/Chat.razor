@@ -157,7 +157,7 @@
         // Stream and display a new response from the IChatClient
         var responseText = new TextContent("");
         currentResponseMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
-        currentResponseCancellation = new();
+        currentResponseCancellation = new(TimeSpan.FromMinutes(2));
 
         // Pass a sliding window of messages to stay within the LLM token limit.
         // Always include the system prompt (first message) plus the most recent messages.
@@ -166,10 +166,27 @@
             ? messages.ToArray()
             : [messages[0], .. messages[^(maxMessages - 1)..]];
 
-        await foreach (var update in ChatClient.GetStreamingResponseAsync(requestMessages, chatOptions, currentResponseCancellation.Token))
+        try
         {
-            AddMessages(messages, update, filter: c => c is not TextContent);
-            responseText.Text += update.Text;
+            await foreach (var update in ChatClient.GetStreamingResponseAsync(
+                requestMessages, chatOptions, currentResponseCancellation.Token))
+            {
+                AddMessages(messages, update, filter: c => c is not TextContent);
+                responseText.Text += update.Text;
+                ChatMessageItem.NotifyChanged(currentResponseMessage);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            responseText.Text += "\n\n*[Response timed out or was cancelled. Please try again.]*";
+            ChatMessageItem.NotifyChanged(currentResponseMessage);
+        }
+        catch (Exception ex)
+        {
+            var errorMsg = ex.Message.Contains("429") || ex.Message.Contains("RateLimitReached")
+                ? "The AI service is temporarily rate-limited. Please wait a moment and try again."
+                : "Something went wrong generating a response. Please try again.";
+            responseText.Text += $"\n\n*[{errorMsg}]*";
             ChatMessageItem.NotifyChanged(currentResponseMessage);
         }
 
