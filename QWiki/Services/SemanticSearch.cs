@@ -1,22 +1,22 @@
-using Azure.Search.Documents;
-using Azure.Search.Documents.Models;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.VectorData;
 using QWiki.Shared;
 
 namespace QWiki.Services;
 
 public class SemanticSearch(
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-    SearchClient searchClient)
+    VectorStore vectorStore)
 {
     public async Task<IReadOnlyList<SemanticSearchRecord>> SearchAsync(string text, string? filenameFilter, int maxResults)
     {
         var queryEmbedding = await embeddingGenerator.GenerateVectorAsync(text);
+        var collection = vectorStore.GetCollection<string, SemanticSearchRecord>(EmbeddingConfig.IndexName);
 
         // Run two queries in parallel: one excluding videos, one including everything.
         // This guarantees wiki/document results appear even when video chunks dominate the index.
-        var nonVideoTask = RunSearchAsync(text, queryEmbedding, filenameFilter, maxResults, excludeVideos: true);
-        var allResultsTask = RunSearchAsync(text, queryEmbedding, filenameFilter, maxResults, excludeVideos: false);
+        var nonVideoTask = RunSearchAsync(collection, queryEmbedding, filenameFilter, maxResults, excludeVideos: true);
+        var allResultsTask = RunSearchAsync(collection, queryEmbedding, filenameFilter, maxResults, excludeVideos: false);
 
         await Task.WhenAll(nonVideoTask, allResultsTask);
 
@@ -45,51 +45,33 @@ public class SemanticSearch(
         return merged;
     }
 
-    private async Task<List<SemanticSearchRecord>> RunSearchAsync(
-        string text, ReadOnlyMemory<float> queryEmbedding, string? filenameFilter,
+    private static async Task<List<SemanticSearchRecord>> RunSearchAsync(
+        VectorStoreCollection<string, SemanticSearchRecord> collection,
+        ReadOnlyMemory<float> queryEmbedding, string? filenameFilter,
         int maxResults, bool excludeVideos)
     {
-        var searchOptions = new SearchOptions
+        var searchOptions = new VectorSearchOptions<SemanticSearchRecord>();
+
+        // Build filter expression based on parameters
+        if (excludeVideos && filenameFilter is { Length: > 0 })
         {
-            Size = maxResults,
-            VectorSearch = new()
-            {
-                Queries =
-                {
-                    new VectorizedQuery(queryEmbedding.ToArray())
-                    {
-                        Fields = { "Vector" },
-                        KNearestNeighborsCount = maxResults * 2
-                    }
-                }
-            },
-            Select =
-            {
-                "Key", "FileName", "PageNumber", "RecordType",
-                "SourceUrl", "Text", "SourceType", "DocumentTitle",
-                "LastModified", "FolderPath"
-            }
-        };
-
-        // Build OData filter combining filename filter and video exclusion
-        var filters = new List<string>();
-        if (filenameFilter is { Length: > 0 })
-            filters.Add($"FileName eq '{EscapeODataString(filenameFilter)}'");
-        if (excludeVideos)
-            filters.Add("RecordType ne 'VIDEO'");
-        if (filters.Count > 0)
-            searchOptions.Filter = string.Join(" and ", filters);
-
-        var response = await searchClient.SearchAsync<SemanticSearchRecord>(text, searchOptions);
+            searchOptions.Filter = r => r.RecordType != "VIDEO" && r.FileName == filenameFilter;
+        }
+        else if (excludeVideos)
+        {
+            searchOptions.Filter = r => r.RecordType != "VIDEO";
+        }
+        else if (filenameFilter is { Length: > 0 })
+        {
+            searchOptions.Filter = r => r.FileName == filenameFilter;
+        }
 
         var results = new List<SemanticSearchRecord>();
-        await foreach (var result in response.Value.GetResultsAsync())
+        await foreach (var result in collection.SearchAsync(queryEmbedding, top: maxResults, searchOptions))
         {
-            results.Add(result.Document);
+            if (result.Record is not null)
+                results.Add(result.Record);
         }
         return results;
     }
-
-    private static string EscapeODataString(string value)
-        => value.Replace("'", "''");
 }

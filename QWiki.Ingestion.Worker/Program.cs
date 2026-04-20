@@ -21,12 +21,11 @@ var embeddingGenerator = aoaiClient.GetEmbeddingClient(EmbeddingConfig.ModelName
 
 builder.Services.AddEmbeddingGenerator(embeddingGenerator);
 
-// Azure AI Search vector store
-builder.Services.AddAzureAISearchVectorStore(
-    new Uri(builder.Configuration["AzureSearch:Endpoint"]
-        ?? throw new InvalidOperationException("Missing AzureSearch:Endpoint.")),
-    new AzureKeyCredential(builder.Configuration["AzureSearch:ApiKey"]
-        ?? throw new InvalidOperationException("Missing AzureSearch:ApiKey.")));
+// Cosmos DB vector store (free tier — permanently $0)
+builder.Services.AddCosmosNoSqlVectorStore(
+    builder.Configuration["CosmosDb:ConnectionString"]
+        ?? throw new InvalidOperationException("Missing CosmosDb:ConnectionString."),
+    "qwiki-db");
 
 // Register all ingestion services (cache, transcriber, sources, ingestor)
 builder.Services.AddIngestionServices(builder.Configuration);

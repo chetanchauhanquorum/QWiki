@@ -4,7 +4,7 @@
 @inject FeedbackService FeedbackService
 @inject IngestionProgressService IngestionProgress
 @inject AzureTableProgressStore ProgressStore
-@inject Azure.Search.Documents.SearchClient SearchClient
+@inject Microsoft.Extensions.VectorData.VectorStore VectorStore
 @implements IDisposable
 
 <PageTitle>QWiki Admin</PageTitle>
@@ -327,10 +327,8 @@
         {
             try
             {
-                foreach (var batch in allKeys.Chunk(1000))
-                {
-                    await SearchClient.DeleteDocumentsAsync("Key", batch);
-                }
+                var collection = VectorStore.GetCollection<string, QWiki.Shared.SemanticSearchRecord>(QWiki.Shared.EmbeddingConfig.IndexName);
+                await collection.DeleteAsync(allKeys);
             }
             catch { }
         }

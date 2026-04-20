@@ -1,5 +1,4 @@
 using Azure;
-using Azure.Search.Documents;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -47,13 +46,9 @@ var ghModelsClient = new OpenAIClient(credential, openAIOptions);
 var chatClient = ghModelsClient.GetChatClient("gpt-4o-mini").AsIChatClient();
 var embeddingGenerator = ghModelsClient.GetEmbeddingClient(EmbeddingConfig.ModelName).AsIEmbeddingGenerator();
 
-var searchEndpoint = new Uri(builder.Configuration["AzureSearch:Endpoint"]
-    ?? throw new InvalidOperationException("Missing configuration: AzureSearch:Endpoint. Set it in appsettings.json."));
-var searchCredential = new AzureKeyCredential(builder.Configuration["AzureSearch:ApiKey"]
-    ?? throw new InvalidOperationException("Missing configuration: AzureSearch:ApiKey. Use 'dotnet user-secrets set AzureSearch:ApiKey YOUR-KEY'."));
-
-builder.Services.AddAzureAISearchVectorStore(searchEndpoint, searchCredential);
-builder.Services.AddSingleton(new SearchClient(searchEndpoint, EmbeddingConfig.IndexName, searchCredential));
+var cosmosConnectionString = builder.Configuration["CosmosDb:ConnectionString"]
+    ?? throw new InvalidOperationException("Missing configuration: CosmosDb:ConnectionString. Use 'dotnet user-secrets set CosmosDb:ConnectionString YOUR-CONNECTION-STRING'.");
+builder.Services.AddCosmosNoSqlVectorStore(cosmosConnectionString, "qwiki-db");
 builder.Services.AddSingleton<SemanticSearch>();
 builder.Services.AddChatClient(chatClient).UseFunctionInvocation().UseLogging();
 builder.Services.AddEmbeddingGenerator(embeddingGenerator);
